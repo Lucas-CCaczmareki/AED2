@@ -18,6 +18,7 @@ typedef struct {
     int sense;      //sentido (normal, ao contrário)
 } word;
 
+/* OK */
 bool verifyPosition(int opt, int* row, int* col, int size, celula** table) {
     int f_valid = true;
     switch (opt)
@@ -50,13 +51,60 @@ bool verifyPosition(int opt, int* row, int* col, int size, celula** table) {
         //Se loopou 100x aleatório e n achou, retorna false depois do break
         break;
     
+    case 1: //horizontal
+        for(int j = 0; j < 100; j++) {
+            *row = rand() % MAX;
+            *col = rand() % MAX;
+
+            if ((*col + size) > MAX) {
+                continue;
+            }
+
+            bool espacoLivre = true;
+
+            for(int i = *col; i < (*col + size); i++) {
+                if(table[*row][i].used == true) {
+                    espacoLivre = false;
+                    break;
+                }
+            }
+            if(espacoLivre) {
+                return true;
+            }
+        }
+        break;
+
+    case 2: //diagonal descendente
+        for(int j = 0; j < 100; j++) {
+            *row = rand() % MAX;
+            *col = rand() % MAX;
+            
+            if (((*col + size) > MAX) || ((*row + size) > MAX)) {
+                continue;
+            }
+
+            bool espacoLivre = true;
+            int k = *col;
+        
+            for(int i = *row; i < (*row + size); i++) {
+                if(table[i][k].used == true) {
+                    espacoLivre = false;
+                    break;
+                }
+                k++;
+            }
+            if(espacoLivre) {
+                return true;
+            }
+
+        }
+
     default:
         break;
     }
 
     return false;
 }
-
 
 /* OK */
 celula** createTable() {
@@ -160,6 +208,7 @@ word** readWords() {
     return words;
 };
 
+/* INCOMPLETE */
 void insertWords(celula** table, word** words) {
     //Imprime as palavras lidas só pra ter certeza
     printf("\n");
@@ -190,14 +239,18 @@ void insertWords(celula** table, word** words) {
         int row = rand() % MAX;
         int col = rand() % MAX;
 
+        //Inverte a palavra se necessário
+        if(words[i]->sense == 1) {
+            strrev(words[i]->word);
+        }
+
         switch (words[i]->direction)
         {
         case 0: //Vertical
             /*  */
-            
             //verifica o tabuleiro até achar uma posição vertical válida
             if(verifyPosition(0, &row, &col, size, table)) {
-                printf("entrei?");
+                printf("0");
                 int k = 0;
 
                 for(int j = row; j < (row + size); j++) {
@@ -205,8 +258,44 @@ void insertWords(celula** table, word** words) {
                     table[j][col].used = true;
                     k++;
                 }
+            } else {
+                printf("Essa palavra não coube no tabuleiro: '%s'\n", words[i]->word);
+            }
+
+            break;
+        
+        case 1: //horizontal
+            if(verifyPosition(1, &row, &col, size, table)) {
+                printf("1");
+                int k = 0;
+                
+                for(int j = col; j < (col + size); j++) {
+                    table[row][j].c = words[i]->word[k];
+                    table[row][j].used = true;
+                    k++;
+                }
+            } else {
+                printf("Essa palavra não coube no tabuleiro: '%s'\n", words[i]->word);
             }
             break;
+        
+        case 2: //diagonal descendente
+            if(verifyPosition(2, &row, &col, size, table)) {
+                printf("2");
+                int c = 0;
+
+                int k = row;
+                for(int j = col; j < (col + size); j++) {
+                    table[k][j].c = words[i]->word[c];
+                    table[k][j].used = true;
+                    k++;
+                    c++;
+                }
+            } else {
+                printf("Essa palavra não coube no tabuleiro: '%s'\n", words[i]->word);
+            }
+            break;
+
         
         default:
             break;
