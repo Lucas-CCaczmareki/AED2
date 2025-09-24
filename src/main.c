@@ -1,3 +1,9 @@
+/*
+Ainda deve ter alguns bugs e melhorias mas no mais ta feito. 
+
+Só faltaria comentar melhor e organizar o código, comentar os print de depuração e tal
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,11 +22,13 @@ typedef struct {
     char word[MAX];
     int direction;  //direção (horizontal, vertical, diagonal)
     int sense;      //sentido (normal, ao contrário)
+    int row_pos;
+    int col_pos;
+    bool found;
 } word;
 
 /* OK */
 bool verifyPosition(int opt, int* row, int* col, int size, celula** table) {
-    int f_valid = true;
     switch (opt)
     {
     case 0: // vertical
@@ -196,6 +204,12 @@ word** readWords() {
 
         //Copia a palavra limpa pro nosso array
         strcpy(words[wordCount]->word, str_aux);
+
+        //Seta a posição -1, -1 (não inserida) para verificações futuras
+        words[wordCount]->row_pos = -1;
+        words[wordCount]->col_pos = -1;
+        words[wordCount]->found = false;
+
         wordCount++;
     }
     fclose(f);
@@ -208,7 +222,7 @@ word** readWords() {
     return words;
 };
 
-/* INCOMPLETE */
+/* OK */
 void insertWords(celula** table, word** words) {
     //Imprime as palavras lidas só pra ter certeza
     printf("\n");
@@ -250,6 +264,10 @@ void insertWords(celula** table, word** words) {
             /*  */
             //verifica o tabuleiro até achar uma posição vertical válida
             if(verifyPosition(0, &row, &col, size, table)) {
+                //Salva a posição de início da palavra na matriz
+                words[i]->row_pos = row;
+                words[i]->col_pos = col;
+                
                 printf("0");
                 int k = 0;
 
@@ -266,6 +284,10 @@ void insertWords(celula** table, word** words) {
         
         case 1: //horizontal
             if(verifyPosition(1, &row, &col, size, table)) {
+                //Salva a posição de início na palavra da matriz
+                words[i]->row_pos = row;
+                words[i]->col_pos = col;
+
                 printf("1");
                 int k = 0;
                 
@@ -281,6 +303,10 @@ void insertWords(celula** table, word** words) {
         
         case 2: //diagonal descendente
             if(verifyPosition(2, &row, &col, size, table)) {
+                //Salva a posição de início da palavra na matriz
+                words[i]->row_pos = row;
+                words[i]->col_pos = col;
+
                 printf("2");
                 int c = 0;
 
@@ -300,10 +326,66 @@ void insertWords(celula** table, word** words) {
         default:
             break;
         }
+
+        //Desinverte a palavra pra ficar intuitivo de jogar
+        if(words[i]->sense == 1) {
+            strrev(words[i]->word);
+        }
     }
 
 
 
+}
+
+word* searchWord(word** words, char* str) {
+    for(int i = 0; i < MAX; i++) {
+        
+        if(strcmp(words[i]->word, str) == 0) {
+            //Se a posição é negativa, ela tá em words mas não coube no tabuleiro
+            if(words[i]->row_pos == -1) {
+                return NULL;
+            }
+
+            //Se found é igual a true, significa que o usuário já marcou essa palavra antes
+            if(words[i]->found == true) {
+                //printf("Essa palavra já foi encontrada!\n");
+                return NULL;
+            }
+
+                
+            return words[i];
+        }
+    }
+    return NULL;
+}
+
+void markWord(celula** table, word* w) {
+    int size = strlen(w->word);
+    w->found = true;
+
+    switch (w->direction) {
+        case 0: //Vertical
+            for(int j = w->row_pos; j < (w->row_pos + size); j++) {
+                table[j][w->col_pos].c = '*';
+            }
+            break;
+        
+        case 1: //horizontal
+            for(int j = w->col_pos; j < (w->col_pos + size); j++) {
+                table[w->row_pos][j].c = '*';
+            }
+            break;
+        
+        case 2: //diagonal descendente
+            int k = w->row_pos;
+            for(int j = w->col_pos; j < (w->col_pos + size); j++) {
+                table[k][j].c = '*';
+                k++;
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 int main () {
@@ -318,5 +400,35 @@ int main () {
     insertWords(matriz, words);
     showTable(n, matriz);
 
+    char str[MAX+2];
+    int total_words = 0;
+    int missing_words = 0;
 
+    for(int i = 0; i < MAX; i++) {
+        if(words[i]->word[0] != '\0') { //não é palavra vazia
+            total_words++;
+            missing_words++;
+        }
+    }
+    
+    //dps melhora esse while pro programa finalizar quando achar todas palavras
+    while(missing_words != 0) {
+        printf("Qual palavra voce acha que esta no tabuleiro? ");
+        scanf("%s", str);
+        str[strcspn(str, "\n")] = 0; //remove o \n
+
+        word* w = searchWord(words, str);
+
+        //se a palavra está contida
+        if(w != NULL) {
+            missing_words--;
+            markWord(matriz, w);
+            printf("Boa, você encontrou uma palavra!");
+        } else {
+            printf("Essa palavra não está no tabuleiro ou já foi encontrada!\n");
+        }
+        
+        showTable(n, matriz);
+    }
+    printf("Parabéns! Você venceu o jogo!");
 }
