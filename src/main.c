@@ -1,10 +1,6 @@
 /*Trie case INSENSITIVE
-Inserção implementada
-Busca implementada
-Remoção
 
-Falta:
-Busca por prefixo
+Usando ela para interpretar
 
 */
 
@@ -13,10 +9,10 @@ Busca por prefixo
 #include <string.h>
 #include <stdbool.h>
 
-
 typedef struct node {
     char c;
     bool end;
+    int feels;
     struct node* next[26];
 } node;
 
@@ -66,33 +62,6 @@ bool search(node** head, char* word) {
     }
     //return p_node->end;
 }
-
-/* DOING */
-/*
-void prefixSearch(node** head, char* prefix) {
-    char str[50], str_aux[50];
-    node* p_node = *head;
-    int size = strlen(prefix);
-
-    for (int i = 0; i < size; i++) {
-        //Aqui já vai testando pra ver se o prefixo existe
-        p_node = p_node->next[prefix[0] - 'a'];
-
-        if(p_node == NULL) {
-            printf("Esse prefixo não existe!\n");
-        } else {
-            str[i] = p_node->c;
-        }
-    }
-    //aqui temos p_node apontando pra última letra do prefixo (o pai de todos) e o prefixo ja na string
-    strcpy(str_aux, str);
-
-    for(int i = 0; i < 26; i++) {
-
-    }
-
-}
-*/
 
 /* OK */
 bool insertWord(node** head, char* word) {
