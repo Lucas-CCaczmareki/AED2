@@ -8,6 +8,7 @@ Usando ela para interpretar
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 typedef struct node {
     char c;
@@ -17,9 +18,71 @@ typedef struct node {
 } node;
 
 /* OK */
+void normalize_string(char* input, char* output) {
+    int i = 0; //índice para a string de entrada (input)
+    int j = 0; //índice para a string de saída (output)
+
+    while (input[i] != '\0') {
+        //Os caracteres acentuados são divididos em 2 bytes
+        //0xC3 marca o início deles
+        if((unsigned char) input[i] == 0xC3) {
+            i++; //pula pro seugndo byte pra identificar o caractere
+            switch ((unsigned char)input[i]) {
+                
+                case 0xA0: // á
+                case 0xA1: // à
+                case 0xA2: // â
+                case 0xA3: // ã
+                    output[j] = 'a';
+                    break;
+                
+                case 0xA7: // ç
+                    output[j] = 'c';
+                    break;
+
+                case 0xA9: // é
+                case 0xAA: // ê
+                    output[j] = 'e';
+                    break;
+
+                case 0xAD: // í
+                    output[j] = 'i';
+                    break;
+                
+                case 0xB3: // ó
+                case 0xB4: // ô
+                case 0xB5: // õ
+                    output[j] = 'o';
+                    break;
+
+                case 0xBA: // ú
+                    output[j] = 'u';
+                    break;
+
+                //Caso seja algo que não queremos tratar
+                default:
+                    //Faz nada, só pula pro próximo
+                    j--; //descrementa pra n deixar espaço em branco
+                    break;
+            }
+        } else {
+            //Se não for um caracter especial (C3XX)
+            //converte pra minúsculo e copia
+            output[j] = tolower((unsigned char)input[i]);
+        }
+        i++;
+        j++;
+    }
+    output[j] = '\0';
+}
+
+/* OK */
 node* createNode() {
     //Cria a cabeça da Trie
     node* head = (node *)malloc(sizeof(node));
+
+    head->end = false;
+    head->feels = 2; //número que não significa nada
 
     //Faz ele apontar pra 26 ponteiros nulos (começa vazia)
     for(int i = 0; i < 26; i++) {
@@ -64,7 +127,54 @@ bool search(node** head, char* word) {
 }
 
 /* OK */
-bool insertWord(node** head, char* word) {
+int searchFeel(node** head, char* word) {
+    node* p_node = *head;
+
+    if(search(head, word)) {
+        //Se entrou, a palavra existe na trie
+        int size = strlen(word);
+        
+        //A ideia vai ser ir movendo com o cálculo de índice até a última letra, depois conferir a flag
+        for(int i = 0; i < size; i++) {
+            //Avança o p_node
+            p_node = p_node->next[(word[i] - 'a')];    
+        }
+        
+        //Aqui estamos com p_node no fim da palavra e então retornamos o índice de sentimento
+        return p_node->feels;
+
+    } else {
+        printf("Essa palavra não existe no arquivo!\n");
+        return 2;
+    }
+}
+
+/* DOING */
+void modifyFeel(node** head, char* word, int feel) {
+    node* p_node = *head;
+
+    if(search(head, word)) {
+        //Se entrou, a palavra existe na trie
+        int size = strlen(word);
+        
+        //A ideia vai ser ir movendo com o cálculo de índice até a última letra, depois conferir a flag
+        for(int i = 0; i < size; i++) {
+            //Avança o p_node
+            p_node = p_node->next[(word[i] - 'a')];    
+        }
+        
+        //Aqui estamos com p_node no fim da palavra e então retornamos o índice de sentimento
+        p_node->feels = feel;
+        return;
+
+    } else {
+        printf("Essa palavra não existe no arquivo!\n");
+        return;
+    }
+}
+
+/* OK */
+bool insertWord(node** head, char* word, int feel) {
     int size = strlen(word); 
     int i;
     node* p_node = NULL;
@@ -96,12 +206,14 @@ bool insertWord(node** head, char* word) {
 
                 if(word[i+1] == '\0') {
                     p_node->end = true;
+                    p_node->feels = feel;
                 }
             //Se a letra existe
             } else {
                 //E é fim de palavra
                 if(word[i+1] == '\0') {
                     p_node->end = true;
+                    p_node->feels = feel;
                 }
             }
 
@@ -185,56 +297,57 @@ bool removeWord(node** head, char* word) {
     }
 }
 
-int main () {
-    node* head = createNode();
+void menu(node** head) {
+    int opt = 0;
     char word[50];
-
-    int opt;
+    char normalized_word[50];
 
     while (true) {
         printf("-------- MENU --------\n");
-        printf("1. Inserir palavra\n");
-        printf("2. Buscar palavra\n");
-        printf("3. Remover palavra\n");
+        printf("1. Busca de polaridade\n");
+        printf("2. Editar polaridade\n");
+        printf("3. Salvar arquivo\n");
         printf("4. Sair\n");
         printf("----------------------\n");
         printf("Digite sua opção: ");
         scanf("%d", &opt);
 
+        int feel = 2;
+
         switch (opt)
         {
-        case 1: // Inserir palavra
-            printf("Digite uma palavra para inserir na Trie: ");
+        case 1: // Busca a polaridade
+            printf("Digite a palavra que você deseja saber a polaridade: ");
             scanf("%s", word);
-            strlwr(word);
+            normalize_string(word, normalized_word);
+            
+            feel = searchFeel(head, normalized_word);
 
-            if(insertWord(&head, word)) {
-                printf("Palavra inserida com sucesso!\n");
+            if(feel == 0) {
+                printf("O sentimento de '%s' é neutro!\n\n", normalized_word);
+            } else if (feel == -1) {
+                printf("O sentimento de '%s' é negativo!\n\n", normalized_word);
+            } else if (feel == 1) {
+                printf("O sentimento de '%s' é positivo!\n\n", normalized_word);
             }
+
             break;
 
-        case 2:
-            printf("Digite a palavra para buscar na Trie: ");
+        case 2: //Editar polaridade
+            printf("Digite a palavra para editar polaridade: ");
             scanf("%s", word);
-            strlwr(word);
+            normalize_string(word, normalized_word);
+            
+            printf("Digite a polaridade: ");
+            scanf("%d", &feel);
 
-            if(search(&head, word)) {
-                printf("Palavra encontrada: '%s'\n", word);
-            } else {
-                printf("Palavra não encontrada!\n");
-            }
+            modifyFeel(head, normalized_word, feel);
+            printf("\n");
 
             break;
         
         case 3:
-            printf("Digite a palavra para remover na Trie: ");
-            scanf("%s", word);
-            strlwr(word);
-
-            if(removeWord(&head, word)) {
-                printf("Palavra '%s' removida com sucesso!\n", word);
-            }
-
+            printf("Not implemented");
             break;
 
         case 4:
@@ -246,8 +359,71 @@ int main () {
             break;
         }
     }
-    
+    return;
+}
 
-    
+int main () {
+    node* head = createNode();
+    char line[100];
+    char word[50];
+    char normalized_word[50];
+    int feel;
+
+    //int opt;
+    //menu(&head, word, opt);
+
+    FILE* f = fopen("OpLexicon.txt", "r");
+
+    if(f == NULL) {
+        printf("Erro ao abrir o arquivo\n");
+        exit(1);
+    }
+
+    //Vou precisar pegar 1 linha do programa e dividir 2 informações: Palavra e Sentimento
+    while(fgets(line, 100, f) != NULL) {
+        //aqui vai a lógica pra dividir
+        //int size = strlen(line);
+        //bool divide = false;
+
+        //Regras sscanf
+        //%49 (aceita no máx 49 chars, deixando espaço pro \0)
+        //[^,] (lê no max 49 até achar uma ,)
+        //%*[^,] (lê tudo e consome (*) at[e achar outra ,])
+        //%d lê um inteiro
+        if(sscanf(line, "%49[^,],%*[^,],%d", word, &feel) == 2) {
+            //armazena a primeira leitura no dest1
+            //armazena a segunda no dest2
+            //compara pra ver se retornou a leitura de 2 itens (o desejado)
+
+            //normaliza a string tirando os acentos
+            normalize_string(word, normalized_word);
+
+            //Insere a string normalizada na Trie
+            insertWord(&head, normalized_word, feel);
+        }
+
+        /* Leitura de string antiga (ineficiente)
+        //Pega as informações da linha
+        for(int i = 0; i < size; i++) {
+            //Lê até achar ',' e guarda em palavra
+            if(line[i] != ',' && divide == false) {
+                word[i] = line[i];
+            } else {
+                word[i] = '\0';
+                divide = true;
+            }
+
+            //Se chegou no segundo ',' (a flag indica isso) salva o número do feeling
+            if(line[i] == ',' && divide == true) {
+                feel = line[i+1];
+            }
+        }
+        */
+    }
+    fclose(f);
+
+    printf("Trie carregada com sucesso!\n\n");
+
+    menu(&head);
 
 }
