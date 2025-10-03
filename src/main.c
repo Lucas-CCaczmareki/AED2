@@ -1,49 +1,27 @@
-/* Trie case INSENSITIVE 
+/* Trie 9 keys - to text
+2 → A B C
+3 → D E F
+4 → G H I
+5 → J K L
+6 → M N O
+7 → P Q R S
+8 → T U V
+9 → W X Y Z
 
-Complexidade das funções
+Recebe um número 2272 tem que ir na trie e retornar todas palavras.
 
-Sendo n o número de palavras e m o tamanho da string. As operações vão depender de m: pois percorrem caracter
-a caracter.
+Pra armazenar na trie: lê a palavra, converte em número
+c -> 2
+a -> 2
+s -> 7
+a -> 2
 
--------------------------------------------------------------------
-Inserção ->
-Tempo:
-    Normalizar: O(m) + Busca: O(m) + Inserir: O(m) = 3O(m) ~= O(m)
-Espaço:
-    O(m), vai criar até m nós novos por palavras.
--------------------------------------------------------------------
+Se for a primeira vai criando os nodos, se já existir percorre até o final
+Testa se é fim de palavra, se não é, marca como é e adiciona a string
+Se já é fim de palavra, adiciona a string no próximo espaço válido.
 
--------------------------------------------------------------------
-Busca ->
-Tempo:
-    Normalizar + Busca = 2 O(m) = O(m)
-Espaço:
-    O(1), não aloca nada novo.
--------------------------------------------------------------------
-
--------------------------------------------------------------------
-Edição -> 
-Tempo:
-    Normaliza + Busca + Edição = 3 O(m) = O(m)
-Espaço:
-    O(1), não cria nada novo na memória.
--------------------------------------------------------------------
-
--------------------------------------------------------------------
-Remoção ->
-Tempo:
-    Normaliza + Busca + Remove = 3 O(m) = O(m)
-Espaço:
-    O(1), não desaloca nada, só muda a flag.
--------------------------------------------------------------------
-
--------------------------------------------------------------------
-Salvamento ->
-Tempo:
-    O(T), sendo T o número de nós na árvore
-Espaço:
-    O(h), sendo H o número de níveis da árvore
--------------------------------------------------------------------
+Ou seja, a trie vai armazenar os números, e todo nodo que é fim de palavra vai conter um
+buffer com todas palavras que aquela sequência de números representa.
 */
 
 #include <stdio.h>
@@ -55,75 +33,116 @@ Espaço:
 typedef struct node {
     char c;
     bool end;
-    int feels;
 
-    char original_word[50]; //guarda a palavra original sem ser normalizada
+    struct node* next[10]; //os números, talvez precise de menos já que o 0 e 1 não são usados
 
-    struct node* next[26];
+    //faz um buffer (tipo o pBuffer) com todas as palavras e guarda o \n. Ai vai salvando igual o pBuffer
+    //o \n já vai servir de divisória e vai ficar uma baita stringzona só com todas palavras e um \0 no final.
+    char* words_buffer; //as palavras que podem ou não finalizar aqui
+    int buffer_size;
+
 } node;
 
-/* OK 
-Essa função foi criada com auxílio de IA. 
-A IA foi utilizada para aprender como manipular os caracteres com acentos.
-*/
-void normalize_string(char* input, char* output) {
+/* OK */
+void string_to_number(char* input, char* output) {
     int i = 0; //índice para a string de entrada (input)
     int j = 0; //índice para a string de saída (output)
 
     while (input[i] != '\0') {
-        //Os caracteres acentuados são divididos em 2 bytes
+        //Os caracteres especiais são divididos em 2 bytes
         //0xC3 marca o início deles
+
+        //Se é caracter especial
+            //Precisa adicionar mais casos
         if((unsigned char) input[i] == 0xC3) {
             i++; //pula pro seugndo byte pra identificar o caractere
             switch ((unsigned char)input[i]) {
                 
-                case 0xA0: // á
-                case 0xA1: // à
-                case 0xA2: // â
-                case 0xA3: // ã
-                    output[j++] = 'a';
+                // Todos 'a's especiais (á à â ã ä Á À Â Ã Ä)
+                case 0xA1: case 0xA0: case 0xA2: case 0xA3: case 0xA4:
+                case 0x81: case 0x80: case 0x82: case 0x83: case 0x84:
+                    output[j++] = '2';
                     break;
                 
-                case 0xA7: // ç
-                    output[j++] = 'c';
+                // Ç e ç
+                case 0xA7: case 0x87: 
+                    output[j++] = '2';
                     break;
 
-                case 0xA8: // è
-                case 0xA9: // é
-                case 0xAA: // ê
-                case 0xAB: // ë
-                    output[j++] = 'e';
+                // Todos 'e's especiais (é è ê ë É È Ê Ë)
+                case 0xA9: case 0xA8: case 0xAA: case 0xAB:
+                case 0x89: case 0x88: case 0x8A: case 0x8B:
+                    output[j++] = '3';
                     break;
 
-                case 0xAD: // í
-                    output[j++] = 'i';
+                // Todos 'i's especiais (í ì î ï Í Ì Î Ï)
+                case 0xAD: case 0xAC: case 0xAE: case 0xAF:
+                case 0x8D: case 0x8C: case 0x8E: case 0x8F:
+                    output[j++] = '4';
                     break;
                 
-                case 0xB3: // ó
-                case 0xB4: // ô
-                case 0xB5: // õ
-                    output[j++] = 'o';
+                // Todos 'o's especiais (ó ò ô õ ö Ó Ò Ô Õ Ö)
+                case 0xB3: case 0xB2: case 0xB4: case 0xB5: case 0xB6:
+                case 0x93: case 0x92: case 0x94: case 0x95: case 0x96:
+                    output[j++] = '6';
                     break;
 
-                case 0xBA: // ú
-                    output[j++] = 'u';
+                //Todos u's especiais (ú ù û ü Ú Ù Û Ü)
+                case 0xBA: case 0xB9: case 0xBB: case 0xBC:
+                case 0x9A: case 0x99: case 0x9B: case 0x9C:
+                    output[j++] = '8';
                     break;
 
                 //Caso seja algo que não queremos tratar
                 default:
                     //Faz nada, só pula pro próximo
-                    //j--; //descrementa pra n deixar espaço em branco
                     break;
             }
+        //Se não é caracter especial (C3XX)
         } else {
-            //Se não for um caracter especial (C3XX)
-
-            //Só copia as letra (ignora caracter tipo hifen ou barra)
+            /* NESSE ELSE AQUI METE-LHE AS LETRA NORMAL E TRNASFORMA EM NÚMERO TAMBÉM.*/
+            
+            //transforma pra minúsculo
             unsigned char ch = tolower((unsigned char)input[i]);
-            if (ch >= 'a' && ch <= 'z') {
-                output[j++] = ch;   // só copia se for letra
+
+            switch (ch)
+            {
+            case 'a': case 'b': case 'c':
+                output[j++] = '2';
+                break;
+            
+            case 'd': case 'e': case 'f':
+                output[j++] = '3';
+                break;
+
+            case 'g': case 'h': case 'i':
+                output[j++] = '4';
+                break;
+
+            case 'j': case 'k': case 'l':
+                output[j++] = '5';
+                break;
+                
+            case 'm': case 'n': case 'o':
+                output[j++] = '6';
+                break;
+
+            case 'p': case 'q': case 'r': case 's':
+                output[j++] = '7';
+                break;
+
+            case 't': case 'u': case 'v':
+                output[j++] = '8';
+                break;
+
+            case 'w': case 'x': case 'y': case 'z':
+                output[j++] = '9';
+                break;
+
+            default:
+                //Só copia as letra (ignora caracter tipo hifen ou barra)
+                break;
             }
-            // se for espaço, hífen, barra, número, ignora
         }
         i++;
     }
@@ -136,369 +155,109 @@ node* createNode() {
     node* head = (node *)malloc(sizeof(node));
 
     head->end = false;
-    head->feels = 2; //número que não significa nada
+    head->words_buffer = NULL; //não aloca espaço
 
-    //Faz ele apontar pra 26 ponteiros nulos (começa vazia)
-    for(int i = 0; i < 26; i++) {
+    //Inicializa todos filhos como null (0-9)
+    for(int i = 0; i < 10; i++) {
         head->next[i] = NULL;
+        head->buffer_size = 0;
     }
 
     return head;
 }
 
-/* OK */
+/* Precisa modificar */
+/*
 bool search(node** head, char* word) {
     node* p_node = *head;
 
-    //Confere se word[0] - 'a' == NULL (ai temos certeza que a palavra não tá)
-    if(p_node->next[(word[0] - 'a')] == NULL) {
-        return false;
-    }
-    
-    //Se chegou aqui, temos a possibilidade da palavra estar dentro da trie
-    int size = strlen(word);
-    
-
-    //A ideia vai ser ir movendo com o cálculo de índice até a última letra, depois conferir a flag
-    for(int i = 0; i < size; i++) {
-        //Avança o p_node
-        p_node = p_node->next[(word[i] - 'a')];
-        
-        //Confere se a próxima letra da palavra tá na trie;
-        if(p_node == NULL) {
-            //isso significa que a palavra não está contida
-            return false;
-        }
-    }
-
-    //Se não retornou false no loop, significa que o p_node tá apontando pra última letra da palavra
-    if(p_node->end != true) {
-        return false;
-    } else {
-        return true;
-    }
-    //return p_node->end;
+    //Vai precisar modificar.
 }
+    */
 
-/* OK */
-int searchFeel(node** head, char* word) {
-    node* p_node = *head;
+/* NÃO TESTADA */
 
-    if(search(head, word)) {
-        //Se entrou, a palavra existe na trie
-        int size = strlen(word);
-        
-        //A ideia vai ser ir movendo com o cálculo de índice até a última letra, depois conferir a flag
-        for(int i = 0; i < size; i++) {
-            //Avança o p_node
-            p_node = p_node->next[(word[i] - 'a')];    
-        }
-        
-        //Aqui estamos com p_node no fim da palavra e então retornamos o índice de sentimento
-        return p_node->feels;
-
-    } else {
-        printf("Essa palavra não existe no arquivo!\n");
-        return 2;
-    }
-}
-
-/* OK */
-void modifyFeel(node** head, char* word, int feel) {
-    node* p_node = *head;
-
-    if(search(head, word)) {
-        //Se entrou, a palavra existe na trie
-        int size = strlen(word);
-        
-        //A ideia vai ser ir movendo com o cálculo de índice até a última letra, depois conferir a flag
-        for(int i = 0; i < size; i++) {
-            //Avança o p_node
-            p_node = p_node->next[(word[i] - 'a')];    
-        }
-        
-        //Aqui estamos com p_node no fim da palavra e então retornamos o índice de sentimento
-        p_node->feels = feel;
-        return;
-
-    } else {
-        printf("Essa palavra não existe no arquivo!\n");
-        return;
-    }
-}
-
-/* OK */
-bool insertWord(node** head, char* word, int feel, char* original_word) {
-    int size = strlen(word); 
+bool insertWord(node** head, char* word, char* nineKey) {
+    int size = strlen(nineKey); 
     int i;
     node* p_node = NULL;
     node* ant_node = NULL;
 
-    //Vai precisar conferir se já existe
-    if(search(head, word)) {
-        //se retornar true:
-        //Como tem várias palavras repetidas no txt, to comentando essa parte pra evitar estresse
-        //printf("Essa palavra já está na trie!\n");
-        return false;
-    } else {
-        //se retornou false, ou a palavra não tá lá 0 letras, ou tem um pedaço, ou tá toda e não ta marcada
-        
-        //A ideia é ir avançando até que a trie não tenha as letras da palavra
-        //E então, criar os nodos e adicionar essas letras
+    p_node = *head;
+    ant_node = *head;
 
-        //Ou marcar fim de palavra se ela já tiver todas letras
+    //Trata o caso da palavra já ta lá (ex: 2272(e casa\n (confere o \n pois pode ter palavras com essa sub-palavra) no buffer já))
 
-        p_node = *head;
-        ant_node = *head;
-        
-        
+    //Vamo supor que não tem nada
+    for(int i = 0; i < size; i++) {
+        p_node = p_node->next[(int)nineKey[i]];
+        ant_node = p_node;
 
+        //Se já tem o número que a gente leu.
+        if (p_node != NULL) {
+            if(nineKey[i+1] == '\0') { // se é fim de palavra
+                p_node->end = true;
+                
+                //Aloca espaço e copia a word pro buffer
+                char* aux = (char*)realloc(p_node->words_buffer, (p_node->buffer_size + strlen(word) + 1));
+                if(aux == NULL) {
+                    printf("A realocação do word buffer falhou!");
+                    exit(1);
+                } else {
+                    p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
+                    //joga a palavra no buffer
 
-        for(i = 0; i < size; i++) {
-            //printf("Inserindo: %s (char=%c idx=%d)\n", word, word[i], word[i] - 'a');
-            p_node = p_node->next[word[i] - 'a'];
+                    //Move next até o próximo espaço vazio
+                    char* next = p_node->words_buffer + p_node->buffer_size;
+                    memcpy(next, word, strlen(word) + 1);
 
-            //Se a letra da palavra não existe na trie
-            if(p_node == NULL) {
-                p_node = createNode();
-                ant_node->next[word[i] - 'a'] = p_node;
-                p_node->c = word[i];
-
-                if(word[i+1] == '\0') {
-                    p_node->end = true;
-                    p_node->feels = feel;
-
-                    strcpy(p_node->original_word, original_word);
-                }
-            //Se a letra existe
-            } else {
-                //E é fim de palavra
-                if(word[i+1] == '\0') {
-                    p_node->end = true;
-                    p_node->feels = feel;
-
-                    strcpy(p_node->original_word, original_word);
-
+                    //Atualiza o tamanho do buffer
+                    p_node->buffer_size += strlen(word) + 1;
                 }
             }
 
-            //se a letra existe e não é fim de palavra vai pra próxima iteração
-            ant_node = p_node;
-        }
-        //Código antigo que tava dando erro, vou deixar aqui caso precise
-        /*
-            //Avança o p_node
-            p_node = p_node->next[(word[i] - 'a')];
-            
-            //Confere se a próxima letra da palavra tá na trie;
-            
-            //cabo a palavra, essa iteração representa a última letra
-            if(word[i+1] == '\0') {
-                //ultima letra da palavra, essa letra pode ou não estar na trie
+        //Se não tem o número que foi lido
+        } else {
+            //Move pra nulo, cria um novo nodo e modifica valor
+            p_node = p_node->next[(int)nineKey[i]];
+            p_node = createNode;
+            p_node->c = nineKey[i];
 
-                //se n ta
-                if(p_node->next[word[i] - 'a'] == NULL) {
-                    //vai inseri
-                }
-                //se ta
-                else {
-                    //marca
-                }
+            //Linka o nodo anterior com o novo nodo criado
+            ant_node->next[(int)nineKey[i]] = p_node;
 
+            if(nineKey[i+1] == '\0') { // se é fim de palavra
+                p_node->end = true;
+                
+                //Aloca espaço e copia a word pro buffer
+                char* aux = (char*)realloc(p_node->words_buffer, (p_node->buffer_size + strlen(word) + 1));
+                if(aux == NULL) {
+                    printf("A realocação do word buffer falhou!");
+                    exit(1);
+                } else {
+                    p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
+                    //joga a palavra no buffer
 
+                    //Move next até o próximo espaço vazio
+                    char* next = p_node->words_buffer + p_node->buffer_size;
+                    memcpy(next, word, strlen(word) + 1);
 
-                break;
-            } else { //ainda não tá no final
-                if(p_node->next[word[i+1] - 'a'] == NULL) {
-                    //isso significa que chegamos na última letra que a trie tem dessa palavra.
-                    break;
+                    //Atualiza o tamanho do buffer
+                    p_node->buffer_size += strlen(word) + 1;
                 }
             }
-
-
-        }
-        //Após o break, p_node está na última letra existente da palavra e i no índice da última letra achada
-        i++;
-
-        //Tem que testar se a palavra chega na última letra sem o break
-        //Se chegou no fim da palavra
-        if(i == (size-1)) {
-            p_node->end = true;
-            return true;
-        } 
-        
-        //Se não tá no fim da palavra
-        while(i < size) {
-            p_node = createNode();                      //Cria um nodo novo
-            //p_node = p_node->next[(word[i] - 'a')];   //Move o ponteiro pra esse novo nodo
-            p_node->c = word[i];                        //Coloca o caracter lá
-            i++;
-        }        
-    }
-    //Quando sair desse while, ta inserida
-    return true;
-        
-    */
-   
-    }
-    return true;
-}
-
-/* OK */
-void saveTrieRecursive(node* current, char* buffer, int depth, FILE* outFile) {
-    //Aqui o depth tá sendo passado por padrão, mas não possui uso prático por enquanto
-    //Ele seria útil para reconstruir a string no buffer caso eu não salvasse a palavra original
-    //mas pra salvar a palavra original eu teria que fazer com a trie aceitando acentos, e eu optei
-    //por fazer normalizando a palavra. De qualquer forma fica a função padronizada.
-    
-    //Se o nodo tá vazio, n faz nada
-    if(current == NULL) {
-        return;
-    }
-
-    //Se é o fim de uma palavra, salva ela no arquivo
-    if (current->end) {
-        fprintf(outFile, "%s,adj,%d\n", current->original_word, current->feels);
-    }
-
-    /* Faz a chamada recursiva percorrendo todas as letras da Trie em ordem alfabética
-    Caso os próximos sejam todos nulos volta 1 nível na recursão e continua pra próxima letra.
-    Vai assim até acabar. */
-    for (int i = 0; i < 26; i++) {
-        if (current->next[i] != NULL) {
-            saveTrieRecursive(current->next[i], buffer, depth + 1, outFile);
         }
     }
-
 }
 
-/* OK */
-void saveTrieToFile(node** head, char* filename) {
-    FILE* outFile = fopen(filename, "w");
-
-    if (outFile == NULL) {
-        printf("Não foi possível criar o arquivo de saída");
-        return;
-    }
-
-    char buffer[50]; //buffer para construir as palavras enquanto percorremos a Trie
-    
-    //Manda o pai de todos pra salvar toda a Trie
-    saveTrieRecursive(*head, buffer, 0, outFile);
-
-    fclose(outFile);
-    printf("Arquivo '%s' salvo com sucesso!\n\n", filename);
-}
-
-
-/* OK */
-bool removeWord(node** head, char* word) {
-    int size = strlen(word);
-    node* p_node = *head;
-
-    if(search(head, word)) {
-        //Move o p_node até a última letra da palavra
-        for(int i = 0; i < size; i++) {
-            p_node = p_node->next[(word[i] - 'a')];
-        }
-        p_node->end = false; //retira a flag de palavra
-        return true;
-    } else {
-        printf("Essa palavra não está na trie!\n");
-        return false;
-    }
-}
-
-void menu(node** head) {
-    int opt = 0;
-    int c;
-    char word[50];
-    char normalized_word[50];
-
-    while (true) {
-        printf("-------- MENU --------\n");
-        printf("1. Busca de polaridade\n");
-        printf("2. Editar polaridade\n");
-        printf("3. Salvar arquivo\n");
-        printf("4. Sair\n");
-        printf("----------------------\n");
-        printf("Digite sua opção: ");
-        scanf("%d", &opt);
-
-        int feel = 2;
-
-        switch (opt)
-        {
-        case 1: // Busca a polaridade
-            printf("Digite a palavra que você deseja saber a polaridade: ");
-            
-            // Limpa todo o restante da linha (inclusive \n)
-            while ((c = getchar()) != '\n' && c != EOF) { }
-
-            fgets(word, sizeof(word), stdin);
-            word[strcspn(word, "\n")] = '\0'; // remove o \n
-
-            normalize_string(word, normalized_word);
-            
-            feel = searchFeel(head, normalized_word);
-
-            if(feel == 0) {
-                printf("O sentimento de '%s' é neutro!\n\n", normalized_word);
-            } else if (feel == -1) {
-                printf("O sentimento de '%s' é negativo!\n\n", normalized_word);
-            } else if (feel == 1) {
-                printf("O sentimento de '%s' é positivo!\n\n", normalized_word);
-            }
-
-            break;
-
-        case 2: //Editar polaridade
-            printf("Digite a palavra para editar polaridade: ");
-            //scanf("%s", word);
-
-            // Limpa todo o restante da linha (inclusive \n)
-            while ((c = getchar()) != '\n' && c != EOF) { }
-
-            fgets(word, sizeof(word), stdin);
-            word[strcspn(word, "\n")] = '\0'; // remove o \n
-
-            normalize_string(word, normalized_word);
-            
-            printf("'-1' - Negativa\n'0' - Neutra\n'1' - Positiva\nDigite a polaridade: ");
-            scanf("%d", &feel);
-
-            modifyFeel(head, normalized_word, feel);
-            printf("\n");
-
-            break;
-        
-        case 3:
-            saveTrieToFile(head, "teste.txt");
-            break;
-
-        case 4:
-            exit(1);
-            break;
-
-        default:
-            printf("Opcao invalida!");
-            break;
-        }
-    }
-    return;
-}
 
 int main () {
     node* head = createNode();
-    char line[100];
-    char word[50];
-    char normalized_word[50];
-    int feel;
-
-    //int opt;
-    //menu(&head, word, opt);
-
-    FILE* f = fopen("OpLexicon.txt", "r");
+    char word[100];
+    char nineKey[50];
+    
+    
+    FILE* f = fopen("palavras.txt", "r");
 
     if(f == NULL) {
         printf("Erro ao abrir o arquivo\n");
@@ -506,50 +265,19 @@ int main () {
     }
 
     //Vou precisar pegar 1 linha do programa e dividir 2 informações: Palavra e Sentimento
-    while(fgets(line, 100, f) != NULL) {
-        //aqui vai a lógica pra dividir
-        //int size = strlen(line);
-        //bool divide = false;
+    while(fgets(word, 100, f) != NULL) {
+        //Normaliza a palavra
+        string_to_number(word, nineKey);
 
-        //Regras sscanf
-        //%49 (aceita no máx 49 chars, deixando espaço pro \0)
-        //[^,] (lê no max 49 até achar uma ,)
-        //%*[^,] (lê tudo e consome (*) at[e achar outra ,])
-        //%d lê um inteiro
-        if(sscanf(line, "%49[^,],%*[^,],%d", word, &feel) == 2) {
-            //armazena a primeira leitura no dest1
-            //armazena a segunda no dest2
-            //compara pra ver se retornou a leitura de 2 itens (o desejado)
-
-            //normaliza a string tirando os acentos
-            normalize_string(word, normalized_word);
-
-            //Insere a string normalizada na Trie
-            insertWord(&head, normalized_word, feel, word);
-        }
-
-        /* Leitura de string antiga (ineficiente)
-        //Pega as informações da linha
-        for(int i = 0; i < size; i++) {
-            //Lê até achar ',' e guarda em palavra
-            if(line[i] != ',' && divide == false) {
-                word[i] = line[i];
-            } else {
-                word[i] = '\0';
-                divide = true;
-            }
-
-            //Se chegou no segundo ',' (a flag indica isso) salva o número do feeling
-            if(line[i] == ',' && divide == true) {
-                feel = line[i+1];
-            }
-        }
-        */
+        //Insere a string na trie de símbolos
+        insertWord(&head, word, nineKey);
     }
+
     fclose(f);
+    
+    //string_to_number("caça", nineKey);
+    //printf("%s!\n\n", normalized_word);
 
-    printf("Trie carregada com sucesso!\n\n");
-
-    menu(&head);
+    //menu(&head);
 
 }
