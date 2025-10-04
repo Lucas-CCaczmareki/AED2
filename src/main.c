@@ -34,12 +34,12 @@ typedef struct node {
     char c;
     bool end;
 
-    struct node* next[10]; //os números, talvez precise de menos já que o 0 e 1 não são usados
+    struct node* next[8]; //os números, talvez precise de menos já que o 0 e 1 não são usados
 
     //faz um buffer (tipo o pBuffer) com todas as palavras e guarda o \n. Ai vai salvando igual o pBuffer
     //o \n já vai servir de divisória e vai ficar uma baita stringzona só com todas palavras e um \0 no final.
     char* words_buffer; //as palavras que podem ou não finalizar aqui
-    int buffer_size;
+    //int buffer_size;
 
 } node;
 
@@ -155,28 +155,55 @@ node* createNode() {
     node* head = (node *)malloc(sizeof(node));
 
     head->end = false;
-    head->words_buffer = NULL; //não aloca espaço
+    head->words_buffer = (char*)malloc(sizeof(char));
+    head->words_buffer[0] = '\0';
 
     //Inicializa todos filhos como null (0-9)
-    for(int i = 0; i < 10; i++) {
+    for(int i = 0; i < 8; i++) {
         head->next[i] = NULL;
-        head->buffer_size = 0;
+        
     }
 
     return head;
 }
 
-/* Precisa modificar */
-/*
-bool search(node** head, char* word) {
+/* OK (SEARCHWORDS) */
+bool search(node** head, char* word, char* nineKey) {
     node* p_node = *head;
+    int size = strlen(nineKey);
+    int word_size = strlen(word);
 
     //Vai precisar modificar.
+    for(int i = 0; i < size; i++) {
+        p_node = p_node->next[(int)nineKey[i] - '0' - 2];
+        if(p_node == NULL) {
+            //significa que não ta inserida, nem o ninekey
+            return false;
+        } else {
+            //se tem o número continua a empreitada
+            if(nineKey[i+1] == '\0') { //se chegou no fim da palavra
+                char* str_finder = p_node->words_buffer;
+                
+                //strstr retorna a primeira ocorrência da subpalavra word no buffer.
+                //Como procuramos por exatamente "caça\n", mesmo que haja uma palavra do tipo "caçada\n" o strstr ainda acerta
+                //por causa do \n.
+
+                //SEG FAULT AQUI
+                if(str_finder == NULL) { //se o buffer começa vazio
+                    return false; //a palavra n ta lá
+                } else {
+                    if ((str_finder = strstr(str_finder, word)) != NULL) {
+                        return true;
+                    } else {
+                        return false; 
+                    }
+                }
+            }
+        }
+    }
 }
-    */
 
-/* NÃO TESTADA */
-
+/* OK? */
 bool insertWord(node** head, char* word, char* nineKey) {
     int size = strlen(nineKey); 
     int i;
@@ -187,69 +214,138 @@ bool insertWord(node** head, char* word, char* nineKey) {
     ant_node = *head;
 
     //Trata o caso da palavra já ta lá (ex: 2272(e casa\n (confere o \n pois pode ter palavras com essa sub-palavra) no buffer já))
+    if(search(head, word, nineKey)) {
+        printf("Essa palavra já está contida!\n");
+        return false;
+    } else {
+        //Se não tiver nada lá.
+        for(int i = 0; i < size; i++) {
+            ant_node = p_node;
+            p_node = p_node->next[(int)nineKey[i] - '0' - 2];
 
-    //Vamo supor que não tem nada
-    for(int i = 0; i < size; i++) {
-        p_node = p_node->next[(int)nineKey[i]];
-        ant_node = p_node;
+            //Se já tem o número que a gente leu.
+            if (p_node != NULL) {
+                if(nineKey[i+1] == '\0') { // se é fim de palavra
+                    p_node->end = true;
+                    
+                    //Aloca espaço e copia a word pro buffer
+                    char* aux = (char*)realloc(p_node->words_buffer, (strlen(p_node->words_buffer) + strlen(word) + 1));
+                    if(aux == NULL) {
+                        printf("A realocação do word buffer falhou!");
+                        exit(1);
+                    } else {
+                        p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
+                        
+                        //Concatena pra dentro do buffer
+                        strcat(p_node->words_buffer, word);
 
-        //Se já tem o número que a gente leu.
-        if (p_node != NULL) {
-            if(nineKey[i+1] == '\0') { // se é fim de palavra
-                p_node->end = true;
-                
-                //Aloca espaço e copia a word pro buffer
-                char* aux = (char*)realloc(p_node->words_buffer, (p_node->buffer_size + strlen(word) + 1));
-                if(aux == NULL) {
-                    printf("A realocação do word buffer falhou!");
-                    exit(1);
-                } else {
-                    p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
-                    //joga a palavra no buffer
-
-                    //Move next até o próximo espaço vazio
-                    char* next = p_node->words_buffer + p_node->buffer_size;
-                    memcpy(next, word, strlen(word) + 1);
-
-                    //Atualiza o tamanho do buffer
-                    p_node->buffer_size += strlen(word) + 1;
+                        //Atualiza o tamanho do buffer
+                        //p_node->buffer_size += strlen(word) + 1;
+                    }
                 }
-            }
 
-        //Se não tem o número que foi lido
-        } else {
-            //Move pra nulo, cria um novo nodo e modifica valor
-            p_node = p_node->next[(int)nineKey[i]];
-            p_node = createNode;
-            p_node->c = nineKey[i];
+            //Se não tem o número que foi lido
+            } else {
+                //Cria um novo nodo e modifica valor
+                p_node = createNode();
+                p_node->c = nineKey[i];
 
-            //Linka o nodo anterior com o novo nodo criado
-            ant_node->next[(int)nineKey[i]] = p_node;
+                //Linka o nodo anterior com o novo nodo criado
+                ant_node->next[(int)nineKey[i] - '0' - 2] = p_node;
 
-            if(nineKey[i+1] == '\0') { // se é fim de palavra
-                p_node->end = true;
-                
-                //Aloca espaço e copia a word pro buffer
-                char* aux = (char*)realloc(p_node->words_buffer, (p_node->buffer_size + strlen(word) + 1));
-                if(aux == NULL) {
-                    printf("A realocação do word buffer falhou!");
-                    exit(1);
-                } else {
-                    p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
-                    //joga a palavra no buffer
+                if(nineKey[i+1] == '\0') { // se é fim de palavra
+                    p_node->end = true;
+                    
+                    //Aloca espaço e copia a word pro buffer
+                    char* aux = (char*)realloc(p_node->words_buffer, (strlen(p_node->words_buffer) + strlen(word) + 1));
+                    if(aux == NULL) {
+                        printf("A realocação do word buffer falhou!");
+                        exit(1);
+                    } else {
+                        p_node->words_buffer = aux; // troca o ponteiro pro novo endereço de memória
+                        
+                        //Concatena pra dentro do buffer
+                        strcat(p_node->words_buffer, word);
 
-                    //Move next até o próximo espaço vazio
-                    char* next = p_node->words_buffer + p_node->buffer_size;
-                    memcpy(next, word, strlen(word) + 1);
-
-                    //Atualiza o tamanho do buffer
-                    p_node->buffer_size += strlen(word) + 1;
+                        //Atualiza o tamanho do buffer
+                        //p_node->buffer_size += strlen(word) + 1;
+                    }
                 }
             }
         }
     }
+    return true;
 }
 
+void searchNum(node** head, char* nineKey) {
+    node* p_node = *head;
+    int i = 0;    
+
+    while(nineKey[i] != '\0') {
+        p_node = p_node->next[(int)nineKey[i] - '0' - 2];
+        if(p_node == NULL) {
+            printf("Esse número não tem nenhuma palavra correspondente!\n");
+            return;
+        }
+        i++;
+    }
+    printf("Palavras correspondentes: \n%s", p_node->words_buffer);
+    
+}
+
+void searchPrefixNum(node** head, char* nineKey) {
+    node* p_node = *head;
+    int i = 0;    
+
+    while(nineKey[i] != '\0') {
+        p_node = p_node->next[(int)nineKey[i] - '0' - 2];
+        if(p_node == NULL) {
+            printf("Esse número não tem nenhuma palavra correspondente!\n");
+            return;
+        }
+        i++;
+    }
+    printf("Palavras correspondentes: \n%s", p_node->words_buffer);
+    
+}
+
+void menu(node** head) {
+    int opt;
+    printf("\n-------------------- MENU --------------------\n");
+    printf("1. Buscar por prefixo.\n");
+    printf("2. Busca estrita.\n");
+    printf("2. Sair\n");
+    printf("----------------------------------------------\n");
+
+    printf("Digite a sua opção: ");
+    scanf("%d", &opt);
+
+    switch (opt)
+    {
+    case 1:
+        char nineKey[50];
+        printf("Digite o código de dígitos: ");
+        getchar(); //limpa o buffer
+        scanf("%[^\n]s", nineKey);
+
+        break;
+    
+    case 2:
+        char nineKey[50];
+        printf("Digite o código de dígitos: ");
+        getchar(); //limpa o buffer
+        scanf("%[^\n]s", nineKey);
+        searchNum(head, nineKey);
+        break;
+
+    case 3:
+        exit(1);
+        break;
+
+    default:
+        break;
+    }
+}
 
 int main () {
     node* head = createNode();
@@ -275,9 +371,18 @@ int main () {
 
     fclose(f);
     
-    //string_to_number("caça", nineKey);
-    //printf("%s!\n\n", normalized_word);
 
     //menu(&head);
+    // printf("Trie carregada, em tese (nao olhei dentro ainda)\n");
+
+    // if(search(&head, "casa\n", "2272")) {
+    //     printf("A trie ta carregada mesmo\n");
+    // } else {
+    //     printf("Fodeu total\n");
+    // }
+
+    while(true) {
+        menu(&head);
+    }
 
 }
