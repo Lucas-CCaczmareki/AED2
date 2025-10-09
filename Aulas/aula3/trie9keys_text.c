@@ -342,6 +342,24 @@ void searchNum(node** head, char* nineKey) {
 }
 
 /* OK */
+void freeTrie(node* head) {
+    //Caso base: O ponteiro não tem um nó
+    if (head == NULL) {
+        return;
+    }
+
+    // Chama a recursão pra todos os 26 filhos do nó atual
+    for (int i = 0; i < 26; i++) {
+        //Chama diretamente pro filho
+        freeTrie(head->next[i]);
+    }
+
+    //Depois de liberar todos os filhos, libera o pai (nó atual)
+    free(head);
+}
+
+
+/* OK */
 void menu(node** head) {
     int opt;
     char nineKey[50];
@@ -374,6 +392,7 @@ void menu(node** head) {
         break;
 
     case 3:
+        freeTrie(*head);
         exit(1);
         break;
 

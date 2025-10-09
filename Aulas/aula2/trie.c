@@ -216,6 +216,24 @@ bool removeWord(node** head, char* word) {
     }
 }
 
+/* OK */
+void freeTrie(node* head) {
+    //Caso base: O ponteiro não tem um nó
+    if (head == NULL) {
+        return;
+    }
+
+    // Chama a recursão pra todos os 26 filhos do nó atual
+    for (int i = 0; i < 26; i++) {
+        //Chama diretamente pro filho
+        freeTrie(head->next[i]);
+    }
+
+    //Depois de liberar todos os filhos, libera o pai (nó atual)
+    free(head);
+}
+
+
 int main () {
     node* head = createNode();
     char word[50];
