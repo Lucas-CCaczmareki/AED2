@@ -348,8 +348,8 @@ void freeTrie(node* head) {
         return;
     }
 
-    // Chama a recursão pra todos os 26 filhos do nó atual
-    for (int i = 0; i < 26; i++) {
+    // Chama a recursão pra todos os 10 filhos do nó atual
+    for (int i = 0; i < 8; i++) {
         //Chama diretamente pro filho
         freeTrie(head->next[i]);
     }
