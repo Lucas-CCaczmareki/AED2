@@ -7,10 +7,10 @@
 #define M 5
 
 #define MAX_KEYS M-1
-#define MIN_KEYS ceil(M/2)-1
+#define MIN_KEYS ((M + 1) / 2 - 1)
 
 #define MAX_CHILDREN M
-#define MIN_CHILDREN ceil(M/2)
+#define MIN_CHILDREN ((M + 1) / 2)
 
 /*
 Implementando um sistema SGA com btree (com permanência em disco)
@@ -22,40 +22,60 @@ Implementando um sistema SGA com btree (com permanência em disco)
 
 */
 
+//As structs começam com a flag pra facilitar a minha vida na hora do registro
 typedef struct {
+    bool ativo;
     int matricula;
     char nome[50];
-    bool ativo;
 } Aluno;
 
+typedef struct {
+    bool ativo;
+    int codigo;
+    char nome[50];
+} Disciplina;
+
+typedef struct {
+    bool ativo;
+    int id_matricula;
+    int matricula_aluno;
+    int cod_disciplina;
+    float media_final;
+} Matricula;
 
 /* 
- * Abre o arquivo de alunos, se não existir, cria um
+ * Abre um dos arquivos de registro, se não existir, cria um
  */
-FILE* abrirArqAlunos(const char* modo) {
-    FILE* fp = fopen("alunos.dat", modo);
-    if(fp == NULL && strcmp(modo, "rb+") == 0) { //strcmp retorna 0 se as strings são iguais
+FILE* openArc(const char* arcName, const char* mode) {
+    FILE* fp = fopen(arcName, mode);
+    if(fp == NULL && strcmp(mode, "rb+") == 0) { //strcmp retorna 0 se as strings são iguais
         //Se não existe, cria um arquivo
-        fp = fopen("alunos.dat", "wb+");
+        fp = fopen(arcName, "wb+");
     }
     return fp;
 }
 
 /*
- * Insere um aluno no arquivo e retorna o offset (posição) onde
+ * Insere um registro(genérico) no arquivo e retorna o offset (posição) onde
  * foi escrito. Este offset será usado como "ponteiro" na B-tree.
  * 
 */
-long inserirAlunoArq(Aluno* aluno) {
-    FILE* fp = abrirArqAlunos("rb+");
+long insertRecord(const char* arcName, void* rec, size_t recSize) {
+    FILE* fp = openArc(arcName, "rb+");
     
     if(fp == NULL) {
         printf("Erro ao abrir arquivo de alunos!\n");
         return -1;
     }
 
+    /* Explicação 
+     * cast do register (void) pra um ponteiro de booleano
+     * acessa o booleano com o primeiro *
+     * Isso funciona por que todas estruturas de registro iniciam
+     * com a flag. Ou seja, o primeiro byte é sempre essa flag.
+    */
     //Marca esse registro como ativo
-    aluno->ativo = true;
+    *((bool*)rec) = true;
 
 
     /* Explicação do fseek
@@ -77,7 +97,6 @@ long inserirAlunoArq(Aluno* aluno) {
     // Guarda a posição atual (offset)
     long offset = ftell(fp);
 
-    // Escreve o registro
     /* Explicando o fwrite
     Parâmetros:
         1. Ponteiro pro elemento(s) que será escrito (pode ser um array)
@@ -87,11 +106,12 @@ long inserirAlunoArq(Aluno* aluno) {
 
     Retorno: retorna o número total de elementos gravados com sucesso
     */
-    size_t escritos = fwrite(aluno, sizeof(Aluno), 1, fp);
+    // Escreve o registro
+    size_t written = fwrite(rec, recSize, 1, fp);
 
     fclose(fp); //fecha o arquivo
 
-    if(escritos != 1) {
+    if(written != 1) {
         printf("Erro ao escrever aluno no arquivo!\n");
         return -1; //indicador de erro
     }
@@ -105,9 +125,9 @@ long inserirAlunoArq(Aluno* aluno) {
  * true se o dado é válido, false se o dado for inválido 
  * 
 */
-bool buscarAluno(long offset, Aluno* aluno) {
+bool searchRecord(const char* arcName, long offset, void* rec, size_t recSize) {
     //Abrir o arquivo
-    FILE* fp = abrirArqAlunos("rb");
+    FILE* fp = openArc(arcName, "rb");
     
     if(fp == NULL) {
         printf("Erro ao abrir o arquivo!");
@@ -122,7 +142,7 @@ bool buscarAluno(long offset, Aluno* aluno) {
     }
 
     //Caso tenha dado certo, vamos ler o registro naquele offset
-    //Lê o registro, atualiza os dados de aluno com o que foi lido
+    //Lê o registro, atualiza os dados do ponteiro com o que foi lido
     /* Explicando o fread
     Parâmetros:
         - ponteiro pra onde o fread vai despejar o que foi lido do disco
@@ -132,7 +152,7 @@ bool buscarAluno(long offset, Aluno* aluno) {
 
     Retorno: número de elmentos lido.
     */
-    size_t lidos = fread(aluno, sizeof(Aluno), 1, fp);
+    size_t lidos = fread(rec, recSize, 1, fp);
     fclose(fp); //fecha o arquivo
 
     if (lidos != 1) { //se leu a mais ou a menos, deu problema
@@ -140,8 +160,11 @@ bool buscarAluno(long offset, Aluno* aluno) {
         return false;
     }
 
+    /* Explicação
+     * acessa o primeiro byte do registro, que é sempre a flag
+    */
     //Verifica se o registro lido é válido
-    if(!aluno->ativo) {
+    if(!*((bool*)rec)) {
         //se o aluno não estiver ativo
         return false;
     }
@@ -151,39 +174,45 @@ bool buscarAluno(long offset, Aluno* aluno) {
 
 /*
  * Atualiza um aluno no registro (arquivo)
+ * enquanto tu não estourar o tamanho pré definido essa função funciona
+ * então adicionar alguma verificação de segurança no futuro é uma boa
 */
-bool atualizarAluno(long offset, Aluno* aluno) {
-    FILE* fp = abrirArqAlunos("rb+"); //abre na leitura binária
-
+bool updateRecord(const char* arcName, long offset, void* rec, size_t recSize) {
+    FILE* fp = openArc(arcName, "rb+"); //abre na leitura e escrita
+    
     //testa se deu bom
-    if(fp == NULL) {
-        printf("Erro ao abrir o arquivo!\n");
+    if (fp == NULL) {
+        printf("Erro ao abrir arquivo de alunos!\n");
         return false;
     }
-
-    //Posiciona o ponteiro no offset
-    if(fseek(fp, offset, SEEK_SET) != 0) {
+    
+    // Posiciona no offset
+    if (fseek(fp, offset, SEEK_SET) != 0) {
         printf("Erro ao posicionar no offset!\n");
         fclose(fp);
         return false;
     }
-
-    aluno->ativo = true; //atualiza pra true pra garantir
-
-    size_t escritos = fwrite(aluno, sizeof(Aluno), 1, fp);
-    if(escritos != 1) {
-        printf("Erro ao atualizar registro do aluno!\n");
+    
+    // Mantém o registro como ativo
+    *((bool*)rec) = true;
+    
+    // Sobrescreve o registro
+    size_t escritos = fwrite(rec, recSize, 1, fp);
+    fclose(fp);
+    
+    if (escritos != 1) {
+        printf("Erro ao atualizar aluno!\n");
         return false;
     }
-
+    
     return true;
 }
 
 /* 
- * Marca um aluno como deletado (sem remover ele fisicamente. Padrão banco de dados)
+ * Marca um registro como deletado (sem remover ele fisicamente. Padrão banco de dados)
 */
-bool deletarAluno(long offset){
-    FILE* fp = abrirArqAlunos("rb+"); //abre no modo leitura e escrita
+bool deleteRecord(const char* arcName, long offset, size_t recSize){
+    FILE* fp = openArc(arcName, "rb+"); //abre no modo leitura e escrita
     
     //testa se deu bom
     if(fp == NULL) {
@@ -198,18 +227,20 @@ bool deletarAluno(long offset){
         return false;
     }
 
-    Aluno aluno;
-    if(fread(&aluno, sizeof(aluno), 1, fp) != 1) {
+    //cria o ponteiro pro registro (record)
+    void* rec = malloc(recSize);
+    if(fread(rec, recSize, 1, fp) != 1) {
         printf("Erro ao ler do registro\n");
         fclose(fp);
         return false;
     }
 
-    aluno.ativo = false;
+    // Identifica ele como deletado
+    *((bool*)rec) = false;
 
     //Volta pra posição e sobreescreve
     fseek(fp, offset, SEEK_SET);
-    size_t escritos = fwrite(&aluno, sizeof(Aluno), 1, fp);
+    size_t escritos = fwrite(rec, recSize, 1, fp);
     fclose(fp);
 
     if(escritos != 1) {
@@ -217,6 +248,7 @@ bool deletarAluno(long offset){
         return false;
     }
 
+    free(rec);
     return true;
 }
 
@@ -225,7 +257,7 @@ bool deletarAluno(long offset){
  * Lista todos os alunos ativos naquele registro
 */
 void listarAlunos() {
-    FILE* fp = abrirArqAlunos("rb");
+    FILE* fp = openArc("alunos.dat", "rb");
     if(fp == NULL) {
         printf("Nenhum aluno cadastrado ainda.\n");
         return;
@@ -255,40 +287,41 @@ void listarAlunos() {
 //FUnções de teste
 int main () {
     printf("=== TESTE DE GERENCIAMENTO DE ARQUIVOS - ALUNOS ===\n\n");
-
+    
     // Teste 1: Inserir alunos
     printf("1. Inserindo alunos...\n");
-
-    Aluno a1 = {12345, "João Silva", true};
-    Aluno a2 = {67890, "Maria Santos", true};
-    Aluno a3 = {11111, "Pedro Oliveira", true};
-
-    long offset1 = inserirAlunoArq(&a1);
-    long offset2 = inserirAlunoArq(&a2);
-    long offset3 = inserirAlunoArq(&a3);
-
+    
+    Aluno a1 = {true, 12345, "João Silva"};
+    Aluno a2 = {true, 67890, "Maria Santos"};
+    Aluno a3 = {true, 11111, "Pedro Oliveira"};
+    
+    long offset1 = insertRecord("alunos.dat", &a1, sizeof(Aluno));
+    long offset2 = insertRecord("alunos.dat", &a2, sizeof(Aluno));
+    long offset3 = insertRecord("alunos.dat", &a3, sizeof(Aluno));
+    
     // Teste 2: Listar todos
     printf("\n2. Listando todos os alunos:\n");
     listarAlunos();
-
+    
     // Teste 3: Buscar por offset
     printf("\n3. Buscando aluno no offset %ld:\n", offset2);
     Aluno buscado;
-    if (buscarAluno(offset2, &buscado)) {
+    if (searchRecord("alunos.dat", offset2, &buscado, sizeof(Aluno))) {
+        
         printf("Encontrado: Matrícula %d - %s\n", 
-            buscado.matricula, buscado.nome);
+               buscado.matricula, buscado.nome);
     }
-
+    
     // Teste 4: Atualizar
     printf("\n4. Atualizando nome do aluno...\n");
     strcpy(a2.nome, "Maria Santos Sousa");
-    atualizarAluno(offset2, &a2);
+    updateRecord("alunos.dat", offset2, &a2, sizeof(Aluno));
     listarAlunos();
-
+    
     // Teste 5: Deletar
     printf("\n5. Deletando aluno no offset %ld...\n", offset1);
-    deletarAluno(offset1);
+    deleteRecord("alunos.dat", offset1, sizeof(Aluno));
     listarAlunos();
-
+    
     return 0;
 }
