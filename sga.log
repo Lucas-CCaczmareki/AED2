@@ -1,0 +1,16 @@
+[SISTEMA] Sistema iniciado
+[INSERT_ALUNO] Inserido aluno: 1 - Lucas Cavallin Caczmareki
+[INSERT_ALUNO] Inserido aluno: 2 - Ulisses
+[DELETE_ALUNO] Deletado aluno: 2 - Ulisses (0 matriculas)
+[INSERT_ALUNO] Inserido aluno: 2 - Ulisses
+[INSERT_ALUNO] Inserido aluno: 3 - Renato Souza
+[INSERT_ALUNO] Inserido aluno: 4 - Tiago Leal
+[INSERT_DISCIPLINA] Inserida disciplina: 1 - Banco de Dados 1
+[INSERT_DISCIPLINA] Inserida disciplina: 2 - Algoritmos e estruturas de dado
+[UPDATE_DISCIPLINA] Atualizada disciplina: 2 - Algoritmos e Estruturas de Dados 2
+[INSERT_MATRICULA] Matricula criada: ID=1, Aluno=1, Disc=1
+[INSERT_MATRICULA] Matricula criada: ID=2, Aluno=1, Disc=2
+[UPDATE_NOTA] Nota atualizada: ID=1, Nova nota=9.00
+[UPDATE_NOTA] Nota atualizada: ID=2, Nova nota=7.00
+[SISTEMA] Sistema encerrado
+[SISTEMA] Sistema iniciado
