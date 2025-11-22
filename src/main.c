@@ -88,6 +88,609 @@ typedef struct {
     int num_nodes;              // Contador de nós
 } BtreeInfo;
 
+// ==================== DECLARAÇÃO DE FUNÇÕES =======================
+FILE* openDataFile(const char* filename, const char* mode);
+FILE* openIndexFile(const char* filename, const char* mode);
+long insertRecord(const char* filename, void* rec, size_t recSize);
+bool searchRecord(const char* filename, long offset, void* rec, size_t recSize);
+bool updateRecord(const char* filename, long offset, void* rec, size_t recSize);
+bool deleteRecord(const char* filename, long offset, size_t recSize);
+void listarAlunos();
+void initializePage(page* pg, bool is_leaf);
+void splitChild(page *parent, int i, page* fullChild);
+void insertIntoNonFull(page* pg, Item item, const char* idx_file);
+void insertIntoNonFull_disk(page* pg, Item item, const char* idx_file);
+void insertBtree(page** root_ptr, Item item, const char* idx_file);
+void insertBtree_disk(page** root_ptr, Item item, const char* idx_file);
+long search(page* root, int key);
+long search_disk(page* root, int key, const char* idx_file);
+void removeBtree_disk(page** root_ptr, int key, const char* idx_file);
+
+SerializedPage serializePage(page* pg);
+long savePage_disk(FILE* fp, page* pg);
+page* loadPage_disk(FILE* fp, long offset);
+void saveBTree_recursive(FILE* fp, page* node);
+void saveBTree(const char* idx_file, page* root);
+page* loadBTree(const char* idx_file);
+void freeTree(page* n);
+
+
+// ==================== FUNÇÕES DE TESTE ====================
+
+void teste_completo_btree() {
+    printf("=== TESTE COMPLETO: B-TREE COM DISCO ===\n\n");
+    
+    const char* idx_file = "test.idx";
+    remove(idx_file);
+    
+    // ====== PARTE 1: INSERÇÃO ======
+    printf("--- PARTE 1: INSERÇÃO ---\n");
+    page* root = (page*)malloc(sizeof(page));
+    initializePage(root, true);
+    
+    int keys[] = {50, 30, 70, 20, 40, 60, 80, 10, 25, 35};
+    for (int i = 0; i < 10; i++) {
+        Item item = {keys[i], keys[i] * 10};
+        insertBtree_disk(&root, item, idx_file);
+        printf("✓ Inserido: %d\n", keys[i]);
+    }
+    
+    freeTree(root);
+    root = NULL;
+    
+    // ====== PARTE 2: CARREGAMENTO E BUSCA ======
+    printf("\n--- PARTE 2: CARREGAMENTO E BUSCA ---\n");
+    root = loadBTree(idx_file);
+    
+    if (root) {
+        printf("✓ Árvore carregada\n");
+        for (int i = 0; i < 10; i++) {
+            long offset = search_disk(root, keys[i], idx_file);
+            printf("Busca %d: offset=%ld %s\n", 
+                   keys[i], offset, offset == keys[i]*10 ? "✓" : "✗");
+        }
+    }
+    
+    // ====== PARTE 3: REMOÇÃO ======
+    printf("\n--- PARTE 3: REMOÇÃO ---\n");
+    int remove_keys[] = {20, 50, 70};
+    for (int i = 0; i < 3; i++) {
+        removeBtree_disk(&root, remove_keys[i], idx_file);
+        printf("✓ Removido: %d\n", remove_keys[i]);
+    }
+    
+    // Verifica remoções
+    printf("\nVerificando remoções:\n");
+    for (int i = 0; i < 3; i++) {
+        long offset = search_disk(root, remove_keys[i], idx_file);
+        printf("Busca %d: %s\n", remove_keys[i], 
+               offset == -1 ? "✓ Não encontrado (correto)" : "✗ ERRO: ainda existe");
+    }
+    
+    freeTree(root);
+    printf("\n✅ TESTE COMPLETO!\n");
+}
+
+// ==================== SISTEMA SGA - CAMADA DE APLICAÇÃO ====================
+
+void menu_principal() {
+    printf("\n========== SISTEMA DE GERENCIAMENTO ACADÊMICO ==========\n");
+    printf("1.  Gerenciar Alunos\n");
+    printf("2.  Gerenciar Disciplinas\n");
+    printf("3.  Gerenciar Matrículas\n");
+    printf("4.  Listar Todos os Dados\n");
+    printf("0.  Sair\n");
+    printf("========================================================\n");
+    printf("Escolha: ");
+}
+
+void menu_alunos() {
+    printf("\n--- GERENCIAR ALUNOS ---\n");
+    printf("1. Inserir Aluno\n");
+    printf("2. Buscar Aluno\n");
+    printf("3. Atualizar Aluno\n");
+    printf("4. Deletar Aluno\n");
+    printf("0. Voltar\n");
+    printf("Escolha: ");
+}
+
+void menu_disciplinas() {
+    printf("\n--- GERENCIAR DISCIPLINAS ---\n");
+    printf("1. Inserir Disciplina\n");
+    printf("2. Buscar Disciplina\n");
+    printf("3. Atualizar Disciplina\n");
+    printf("4. Deletar Disciplina\n");
+    printf("0. Voltar\n");
+    printf("Escolha: ");
+}
+
+void menu_matriculas() {
+    printf("\n--- GERENCIAR MATRÍCULAS ---\n");
+    printf("1. Matricular Aluno\n");
+    printf("2. Buscar Matrícula\n");
+    printf("3. Lançar/Atualizar Nota\n");
+    printf("4. Remover Matrícula\n");
+    printf("0. Voltar\n");
+    printf("Escolha: ");
+}
+
+// ========== FUNÇÕES CRUD ALUNOS ==========
+
+void inserir_aluno(page** root_alunos) {
+    Aluno aluno;
+    printf("\nMatrícula: ");
+    scanf("%d", &aluno.matricula);
+    getchar(); // limpa buffer
+    
+    // Verifica se já existe
+    long existe = search_disk(*root_alunos, aluno.matricula, "alunos.idx");
+    if (existe != -1) {
+        printf("✗ Aluno com essa matrícula já existe!\n");
+        return;
+    }
+    
+    printf("Nome: ");
+    fgets(aluno.nome, 50, stdin);
+    aluno.nome[strcspn(aluno.nome, "\n")] = 0; // remove \n
+    
+    long offset = insertRecord("alunos.dat", &aluno, sizeof(Aluno));
+    if (offset != -1) {
+        Item item = {aluno.matricula, offset};
+        insertBtree_disk(root_alunos, item, "alunos.idx");
+        printf("✓ Aluno inserido com sucesso!\n");
+    }
+}
+
+void buscar_aluno(page* root_alunos) {
+    int matricula;
+    printf("\nMatrícula: ");
+    scanf("%d", &matricula);
+    
+    long offset = search_disk(root_alunos, matricula, "alunos.idx");
+    if (offset == -1) {
+        printf("✗ Aluno não encontrado!\n");
+        return;
+    }
+    
+    Aluno aluno;
+    if (searchRecord("alunos.dat", offset, &aluno, sizeof(Aluno))) {
+        printf("\n--- ALUNO ENCONTRADO ---\n");
+        printf("Matrícula: %d\n", aluno.matricula);
+        printf("Nome: %s\n", aluno.nome);
+    } else {
+        printf("✗ Erro ao ler dados do aluno!\n");
+    }
+}
+
+void atualizar_aluno(page* root_alunos) {
+    int matricula;
+    printf("\nMatrícula: ");
+    scanf("%d", &matricula);
+    getchar();
+    
+    long offset = search_disk(root_alunos, matricula, "alunos.idx");
+    if (offset == -1) {
+        printf("✗ Aluno não encontrado!\n");
+        return;
+    }
+    
+    Aluno aluno;
+    if (!searchRecord("alunos.dat", offset, &aluno, sizeof(Aluno))) {
+        printf("✗ Erro ao ler aluno!\n");
+        return;
+    }
+    
+    printf("Nome atual: %s\n", aluno.nome);
+    printf("Novo nome: ");
+    fgets(aluno.nome, 50, stdin);
+    aluno.nome[strcspn(aluno.nome, "\n")] = 0;
+    
+    if (updateRecord("alunos.dat", offset, &aluno, sizeof(Aluno))) {
+        printf("✓ Aluno atualizado com sucesso!\n");
+    } else {
+        printf("✗ Erro ao atualizar!\n");
+    }
+}
+
+void deletar_aluno(page** root_alunos, page** root_matriculas) {
+    int matricula;
+    printf("\nMatrícula: ");
+    scanf("%d", &matricula);
+    
+    long offset = search_disk(*root_alunos, matricula, "alunos.idx");
+    if (offset == -1) {
+        printf("✗ Aluno não encontrado!\n");
+        return;
+    }
+    
+    // CONSISTÊNCIA REFERENCIAL: Remove todas matrículas do aluno
+    printf("Removendo matrículas associadas...\n");
+    FILE* fp = openDataFile("matriculas.dat", "rb");
+    if (fp) {
+        Matricula mat;
+        long mat_offset = 0;
+        while (fread(&mat, sizeof(Matricula), 1, fp) == 1) {
+            if (mat.ativo && mat.matricula_aluno == matricula) {
+                deleteRecord("matriculas.dat", mat_offset, sizeof(Matricula));
+                removeBtree_disk(root_matriculas, mat.id_matricula, "matriculas.idx");
+                printf("  ✓ Matrícula %d removida\n", mat.id_matricula);
+            }
+            mat_offset += sizeof(Matricula);
+        }
+        fclose(fp);
+    }
+    
+    // Remove o aluno
+    if (deleteRecord("alunos.dat", offset, sizeof(Aluno))) {
+        removeBtree_disk(root_alunos, matricula, "alunos.idx");
+        printf("✓ Aluno deletado com sucesso!\n");
+    } else {
+        printf("✗ Erro ao deletar!\n");
+    }
+}
+
+// ========== FUNÇÕES CRUD DISCIPLINAS ==========
+
+void inserir_disciplina(page** root_disciplinas) {
+    Disciplina disc;
+    printf("\nCódigo da disciplina: ");
+    scanf("%d", &disc.codigo);
+    getchar();
+    
+    long existe = search_disk(*root_disciplinas, disc.codigo, "disciplinas.idx");
+    if (existe != -1) {
+        printf("✗ Disciplina com esse código já existe!\n");
+        return;
+    }
+    
+    printf("Nome: ");
+    fgets(disc.nome, 50, stdin);
+    disc.nome[strcspn(disc.nome, "\n")] = 0;
+    
+    long offset = insertRecord("disciplinas.dat", &disc, sizeof(Disciplina));
+    if (offset != -1) {
+        Item item = {disc.codigo, offset};
+        insertBtree_disk(root_disciplinas, item, "disciplinas.idx");
+        printf("✓ Disciplina inserida com sucesso!\n");
+    }
+}
+
+void buscar_disciplina(page* root_disciplinas) {
+    int codigo;
+    printf("\nCódigo: ");
+    scanf("%d", &codigo);
+    
+    long offset = search_disk(root_disciplinas, codigo, "disciplinas.idx");
+    if (offset == -1) {
+        printf("✗ Disciplina não encontrada!\n");
+        return;
+    }
+    
+    Disciplina disc;
+    if (searchRecord("disciplinas.dat", offset, &disc, sizeof(Disciplina))) {
+        printf("\n--- DISCIPLINA ENCONTRADA ---\n");
+        printf("Código: %d\n", disc.codigo);
+        printf("Nome: %s\n", disc.nome);
+    }
+}
+
+void atualizar_disciplina(page* root_disciplinas) {
+    int codigo;
+    printf("\nCódigo: ");
+    scanf("%d", &codigo);
+    getchar();
+    
+    long offset = search_disk(root_disciplinas, codigo, "disciplinas.idx");
+    if (offset == -1) {
+        printf("✗ Disciplina não encontrada!\n");
+        return;
+    }
+    
+    Disciplina disc;
+    if (!searchRecord("disciplinas.dat", offset, &disc, sizeof(Disciplina))) {
+        printf("✗ Erro ao ler disciplina!\n");
+        return;
+    }
+    
+    printf("Nome atual: %s\n", disc.nome);
+    printf("Novo nome: ");
+    fgets(disc.nome, 50, stdin);
+    disc.nome[strcspn(disc.nome, "\n")] = 0;
+    
+    if (updateRecord("disciplinas.dat", offset, &disc, sizeof(Disciplina))) {
+        printf("✓ Disciplina atualizada!\n");
+    }
+}
+
+void deletar_disciplina(page** root_disciplinas, page** root_matriculas) {
+    int codigo;
+    printf("\nCódigo: ");
+    scanf("%d", &codigo);
+    
+    long offset = search_disk(*root_disciplinas, codigo, "disciplinas.idx");
+    if (offset == -1) {
+        printf("✗ Disciplina não encontrada!\n");
+        return;
+    }
+    
+    // CONSISTÊNCIA REFERENCIAL
+    printf("Removendo matrículas associadas...\n");
+    FILE* fp = openDataFile("matriculas.dat", "rb");
+    if (fp) {
+        Matricula mat;
+        long mat_offset = 0;
+        while (fread(&mat, sizeof(Matricula), 1, fp) == 1) {
+            if (mat.ativo && mat.cod_disciplina == codigo) {
+                deleteRecord("matriculas.dat", mat_offset, sizeof(Matricula));
+                removeBtree_disk(root_matriculas, mat.id_matricula, "matriculas.idx");
+                printf("  ✓ Matrícula %d removida\n", mat.id_matricula);
+            }
+            mat_offset += sizeof(Matricula);
+        }
+        fclose(fp);
+    }
+    
+    if (deleteRecord("disciplinas.dat", offset, sizeof(Disciplina))) {
+        removeBtree_disk(root_disciplinas, codigo, "disciplinas.idx");
+        printf("✓ Disciplina deletada!\n");
+    }
+}
+
+// ========== FUNÇÕES CRUD MATRÍCULAS ==========
+
+int proximo_id_matricula() {
+    FILE* fp = openDataFile("matriculas.dat", "rb");
+    if (!fp) return 1;
+    
+    int max_id = 0;
+    Matricula mat;
+    while (fread(&mat, sizeof(Matricula), 1, fp) == 1) {
+        if (mat.id_matricula > max_id) max_id = mat.id_matricula;
+    }
+    fclose(fp);
+    return max_id + 1;
+}
+
+void matricular_aluno(page** root_matriculas, page* root_alunos, page* root_disciplinas) {
+    Matricula mat;
+    
+    printf("\nMatrícula do aluno: ");
+    scanf("%d", &mat.matricula_aluno);
+    
+    // Verifica se aluno existe
+    if (search_disk(root_alunos, mat.matricula_aluno, "alunos.idx") == -1) {
+        printf("✗ Aluno não encontrado!\n");
+        return;
+    }
+    
+    printf("Código da disciplina: ");
+    scanf("%d", &mat.cod_disciplina);
+    
+    // Verifica se disciplina existe
+    if (search_disk(root_disciplinas, mat.cod_disciplina, "disciplinas.idx") == -1) {
+        printf("✗ Disciplina não encontrada!\n");
+        return;
+    }
+    
+    mat.id_matricula = proximo_id_matricula();
+    mat.media_final = 0.0;
+    
+    long offset = insertRecord("matriculas.dat", &mat, sizeof(Matricula));
+    if (offset != -1) {
+        Item item = {mat.id_matricula, offset};
+        insertBtree_disk(root_matriculas, item, "matriculas.idx");
+        printf("✓ Matrícula realizada! ID: %d\n", mat.id_matricula);
+    }
+}
+
+void buscar_matricula(page* root_matriculas) {
+    int id;
+    printf("\nID da matrícula: ");
+    scanf("%d", &id);
+    
+    long offset = search_disk(root_matriculas, id, "matriculas.idx");
+    if (offset == -1) {
+        printf("✗ Matrícula não encontrada!\n");
+        return;
+    }
+    
+    Matricula mat;
+    if (searchRecord("matriculas.dat", offset, &mat, sizeof(Matricula))) {
+        printf("\n--- MATRÍCULA ---\n");
+        printf("ID: %d\n", mat.id_matricula);
+        printf("Aluno: %d\n", mat.matricula_aluno);
+        printf("Disciplina: %d\n", mat.cod_disciplina);
+        printf("Média Final: %.2f\n", mat.media_final);
+    }
+}
+
+void atualizar_nota(page* root_matriculas) {
+    int id;
+    printf("\nID da matrícula: ");
+    scanf("%d", &id);
+    
+    long offset = search_disk(root_matriculas, id, "matriculas.idx");
+    if (offset == -1) {
+        printf("✗ Matrícula não encontrada!\n");
+        return;
+    }
+    
+    Matricula mat;
+    if (!searchRecord("matriculas.dat", offset, &mat, sizeof(Matricula))) {
+        printf("✗ Erro ao ler matrícula!\n");
+        return;
+    }
+    
+    printf("Média atual: %.2f\n", mat.media_final);
+    printf("Nova média: ");
+    scanf("%f", &mat.media_final);
+    
+    if (updateRecord("matriculas.dat", offset, &mat, sizeof(Matricula))) {
+        printf("✓ Nota atualizada!\n");
+    }
+}
+
+void remover_matricula(page** root_matriculas) {
+    int id;
+    printf("\nID da matrícula: ");
+    scanf("%d", &id);
+    
+    long offset = search_disk(*root_matriculas, id, "matriculas.idx");
+    if (offset == -1) {
+        printf("✗ Matrícula não encontrada!\n");
+        return;
+    }
+    
+    if (deleteRecord("matriculas.dat", offset, sizeof(Matricula))) {
+        removeBtree_disk(root_matriculas, id, "matriculas.idx");
+        printf("✓ Matrícula removida!\n");
+    }
+}
+
+// ========== LISTAGENS ==========
+
+void listar_todos() {
+    printf("\n========== ALUNOS ==========\n");
+    FILE* fp = openDataFile("alunos.dat", "rb");
+    if (fp) {
+        Aluno a;
+        while (fread(&a, sizeof(Aluno), 1, fp) == 1) {
+            if (a.ativo) {
+                printf("Mat: %d | Nome: %s\n", a.matricula, a.nome);
+            }
+        }
+        fclose(fp);
+    }
+    
+    printf("\n========== DISCIPLINAS ==========\n");
+    fp = openDataFile("disciplinas.dat", "rb");
+    if (fp) {
+        Disciplina d;
+        while (fread(&d, sizeof(Disciplina), 1, fp) == 1) {
+            if (d.ativo) {
+                printf("Cod: %d | Nome: %s\n", d.codigo, d.nome);
+            }
+        }
+        fclose(fp);
+    }
+    
+    printf("\n========== MATRÍCULAS ==========\n");
+    fp = openDataFile("matriculas.dat", "rb");
+    if (fp) {
+        Matricula m;
+        while (fread(&m, sizeof(Matricula), 1, fp) == 1) {
+            if (m.ativo) {
+                printf("ID: %d | Aluno: %d | Disc: %d | Nota: %.2f\n",
+                       m.id_matricula, m.matricula_aluno, 
+                       m.cod_disciplina, m.media_final);
+            }
+        }
+        fclose(fp);
+    }
+}
+
+// ==================== MAIN ====================
+
+int main() {
+    // Carrega ou cria árvores
+    page* root_alunos = loadBTree("alunos.idx");
+    if (!root_alunos) {
+        root_alunos = (page*)malloc(sizeof(page));
+        initializePage(root_alunos, true);
+    }
+    
+    page* root_disciplinas = loadBTree("disciplinas.idx");
+    if (!root_disciplinas) {
+        root_disciplinas = (page*)malloc(sizeof(page));
+        initializePage(root_disciplinas, true);
+    }
+    
+    page* root_matriculas = loadBTree("matriculas.idx");
+    if (!root_matriculas) {
+        root_matriculas = (page*)malloc(sizeof(page));
+        initializePage(root_matriculas, true);
+    }
+    
+    // Para rodar o teste ao invés do sistema:
+    // teste_completo_btree();
+    // return 0;
+    
+    int opcao, sub_opcao;
+    
+    while (1) {
+        menu_principal();
+        scanf("%d", &opcao);
+        
+        switch (opcao) {
+            case 1: // Alunos
+                while (1) {
+                    menu_alunos();
+                    scanf("%d", &sub_opcao);
+                    if (sub_opcao == 0) break;
+                    
+                    switch (sub_opcao) {
+                        case 1: inserir_aluno(&root_alunos); break;
+                        case 2: buscar_aluno(root_alunos); break;
+                        case 3: atualizar_aluno(root_alunos); break;
+                        case 4: deletar_aluno(&root_alunos, &root_matriculas); break;
+                    }
+                }
+                break;
+                
+            case 2: // Disciplinas
+                while (1) {
+                    menu_disciplinas();
+                    scanf("%d", &sub_opcao);
+                    if (sub_opcao == 0) break;
+                    
+                    switch (sub_opcao) {
+                        case 1: inserir_disciplina(&root_disciplinas); break;
+                        case 2: buscar_disciplina(root_disciplinas); break;
+                        case 3: atualizar_disciplina(root_disciplinas); break;
+                        case 4: deletar_disciplina(&root_disciplinas, &root_matriculas); break;
+                    }
+                }
+                break;
+                
+            case 3: // Matrículas
+                while (1) {
+                    menu_matriculas();
+                    scanf("%d", &sub_opcao);
+                    if (sub_opcao == 0) break;
+                    
+                    switch (sub_opcao) {
+                        case 1: matricular_aluno(&root_matriculas, root_alunos, root_disciplinas); break;
+                        case 2: buscar_matricula(root_matriculas); break;
+                        case 3: atualizar_nota(root_matriculas); break;
+                        case 4: remover_matricula(&root_matriculas); break;
+                    }
+                }
+                break;
+                
+            case 4: // Listar tudo
+                listar_todos();
+                break;
+                
+            case 0: // Sair
+                printf("\nSalvando dados...\n");
+                saveBTree("alunos.idx", root_alunos);
+                saveBTree("disciplinas.idx", root_disciplinas);
+                saveBTree("matriculas.idx", root_matriculas);
+                
+                freeTree(root_alunos);
+                freeTree(root_disciplinas);
+                freeTree(root_matriculas);
+                
+                printf("✓ Sistema encerrado!\n");
+                return 0;
+                
+            default:
+                printf("Opção inválida!\n");
+        }
+    }
+    
+    return 0;
+}
 
 // ========================= Funções de Disco ================================
 
@@ -318,6 +921,8 @@ bool deleteRecord(const char* filename, long offset, size_t recSize){
     return true;
 }
 
+
+
 /*
  * Lista todos os alunos ativos naquele registro
 */
@@ -453,7 +1058,7 @@ void splitChild(page *parent, int i, page* fullChild) {
 }
 
 /* Insere numa página que ainda não tá cheia */
-void insertIntoNonFull(page* pg, Item item) {
+void insertIntoNonFull(page* pg, Item item, const char* idx_file) {
     //A inserção só ocorre de fato, em folhas, propriedade da B-Tree
     if (pg->isLeaf) {
         int pos = pg->numKeys - 1; //pq índice começa em 0
@@ -475,15 +1080,26 @@ void insertIntoNonFull(page* pg, Item item) {
         while (pos >= 0 && item.key < pg->items[pos].key) pos--;
         pos++; //pos agora aponta pra onde o item deve ser inserido
 
-        //Segurança extra pra não ter como dar segfault
-        if (pg->ptr[pos] == NULL) { //se o ponteiro à a esquerda for nulo
-            // Não é pra isso acontecer nunca, já que se não for folha, o ponteiro tem filho
-            // mas se por algum erro isso aconteceu... Cria o filho e fica por isso
-            pg->ptr[pos] = (page*)malloc(sizeof(page));
-            initializePage(pg->ptr[pos], true);
-
-            pg->ptr[pos]->father = pg; //não ta sendo usado até então, mas vamo ver
-        }
+        //se o filho não tá na RAM (carrega do disco se for necessário)
+        if (pg->ptr[pos] == NULL) { 
+            //Verifica se ele existe em disco
+            if (pg->children_offsets != NULL && pg->children_offsets[pos] != -1) {
+                //Carrega do disco
+                FILE* fp = openIndexFile(idx_file, "rb+");
+                if (fp) {
+                    pg->ptr[pos] = loadPage_disk(fp, pg->children_offsets[pos]);
+                    
+                    if (pg->ptr[pos]) {
+                        pg->ptr[pos]->father = pg;
+                    }
+                    fclose(fp);
+                }
+            } else {
+                // Cria um novo filho
+                pg->ptr[pos] = (page*)malloc(sizeof(page));
+                initializePage(pg->ptr[pos], true);
+            }
+        }    
 
         // Split preventivo do Split-Then-Insert. 
             // Confere se o filho que vai descer ta cheio, e se tiver, splita
@@ -494,12 +1110,408 @@ void insertIntoNonFull(page* pg, Item item) {
             if (item.key > pg->items[pos].key) pos++; //descer pelo ponteiro da direita
             // caso contrário, o incremento não é feito, descemos pelo ponteiro da esquerda
         }
-        insertIntoNonFull(pg->ptr[pos], item);
+        insertIntoNonFull(pg->ptr[pos], item, idx_file);
     }
 }
 
+// =================== INSERT NO DISCO ==========================
+
+void insertIntoNonFull_disk(page* pg, Item item, const char* idx_file) {
+    if (pg->isLeaf) {
+        int pos = pg->numKeys - 1;
+        while (pos >= 0 && item.key < pg->items[pos].key) {
+            pg->items[pos + 1] = pg->items[pos];
+            pos--;
+        }
+        pg->items[pos + 1] = item;
+        pg->numKeys++;
+    } else {
+        int pos = pg->numKeys - 1;
+        while (pos >= 0 && item.key < pg->items[pos].key) pos--;
+        pos++;
+
+        if (pg->ptr[pos] == NULL) {
+            if (pg->children_offsets != NULL && pg->children_offsets[pos] != -1) {
+                FILE* fp = openIndexFile(idx_file, "rb+");
+                if (fp) {
+                    pg->ptr[pos] = loadPage_disk(fp, pg->children_offsets[pos]);
+                    if (pg->ptr[pos]) {
+                        pg->ptr[pos]->father = pg;
+                    }
+                    fclose(fp);
+                }
+            } else {
+                pg->ptr[pos] = (page*)malloc(sizeof(page));
+                initializePage(pg->ptr[pos], true);
+                pg->ptr[pos]->father = pg;
+            }
+        }
+
+        if (pg->ptr[pos]->numKeys == MAX_KEYS) {
+            splitChild(pg, pos, pg->ptr[pos]);
+            if (item.key > pg->items[pos].key) pos++;
+        }
+        
+        insertIntoNonFull_disk(pg->ptr[pos], item, idx_file);
+    }
+}
+
+void insertBtree_disk(page** root_ptr, Item item, const char* idx_file) {
+    page* root = *root_ptr;
+
+    if (root->numKeys == MAX_KEYS) {
+        page* new_root = (page*)malloc(sizeof(page));
+        initializePage(new_root, false);
+        new_root->ptr[0] = root;
+        root->father = new_root;
+        splitChild(new_root, 0, root);
+
+        int pos = 0;
+        if (item.key > new_root->items[0].key) pos++;
+        insertIntoNonFull_disk(new_root->ptr[pos], item, idx_file);
+        *root_ptr = new_root;
+    } else {
+        insertIntoNonFull_disk(root, item, idx_file);
+    }
+    
+    // Salva automaticamente após inserção
+    saveBTree(idx_file, *root_ptr);
+}
+
+// ==================== BUSCA COM CARREGAMENTO DO DISCO ====================
+
+long search_disk(page* root, int key, const char* idx_file) {
+    page* cur = root;
+
+    while (cur != NULL) {
+        int i = 0;
+        while (i < cur->numKeys && key > cur->items[i].key) i++;
+
+        if (i < cur->numKeys && key == cur->items[i].key) {
+            return cur->items[i].data_offset;
+        }
+
+        if (cur->isLeaf) return -1;
+
+        // Carrega filho do disco se necessário
+        if (cur->ptr[i] == NULL) {
+            if (cur->children_offsets != NULL && cur->children_offsets[i] != -1) {
+                FILE* fp = openIndexFile(idx_file, "rb+");
+                if (fp) {
+                    cur->ptr[i] = loadPage_disk(fp, cur->children_offsets[i]);
+                    if (cur->ptr[i]) cur->ptr[i]->father = cur;
+                    fclose(fp);
+                }
+            }
+            if (cur->ptr[i] == NULL) return -1;
+        }
+        
+        cur = cur->ptr[i];
+    }
+    return -1;
+}
+
+// ==================== FUNÇÕES DE REMOÇÃO ====================
+
+int getPredecessor(page* node, int idx, const char* idx_file) {
+    page* cur = node->ptr[idx];
+    
+    while (!cur->isLeaf) {
+        int child_idx = cur->numKeys;
+        if (cur->ptr[child_idx] == NULL && cur->children_offsets != NULL) {
+            FILE* fp = openIndexFile(idx_file, "rb+");
+            if (fp) {
+                cur->ptr[child_idx] = loadPage_disk(fp, cur->children_offsets[child_idx]);
+                if (cur->ptr[child_idx]) cur->ptr[child_idx]->father = cur;
+                fclose(fp);
+            }
+        }
+        cur = cur->ptr[child_idx];
+        if (!cur) break;
+    }
+    return cur->items[cur->numKeys - 1].key;
+}
+
+int getSuccessor(page* node, int idx, const char* idx_file) {
+    page* cur = node->ptr[idx + 1];
+    
+    while (!cur->isLeaf) {
+        if (cur->ptr[0] == NULL && cur->children_offsets != NULL) {
+            FILE* fp = openIndexFile(idx_file, "rb+");
+            if (fp) {
+                cur->ptr[0] = loadPage_disk(fp, cur->children_offsets[0]);
+                if (cur->ptr[0]) cur->ptr[0]->father = cur;
+                fclose(fp);
+            }
+        }
+        cur = cur->ptr[0];
+        if (!cur) break;
+    }
+    return cur->items[0].key;
+}
+
+void borrowFromLeft(page* parent, int childIndex) {
+    page* child = parent->ptr[childIndex];
+    page* left = parent->ptr[childIndex - 1];
+
+    for (int k = child->numKeys - 1; k >= 0; k--) {
+        child->items[k + 1] = child->items[k];
+    }
+    if (!child->isLeaf) {
+        for (int k = child->numKeys; k >= 0; k--) {
+            child->ptr[k + 1] = child->ptr[k];
+            if (child->children_offsets) {
+                child->children_offsets[k + 1] = child->children_offsets[k];
+            }
+        }
+    }
+
+    child->items[0] = parent->items[childIndex - 1];
+
+    if (!child->isLeaf) {
+        child->ptr[0] = left->ptr[left->numKeys];
+        if (child->children_offsets && left->children_offsets) {
+            child->children_offsets[0] = left->children_offsets[left->numKeys];
+        }
+        if (child->ptr[0]) child->ptr[0]->father = child;
+        left->ptr[left->numKeys] = NULL;
+    }
+
+    parent->items[childIndex - 1] = left->items[left->numKeys - 1];
+
+    child->numKeys++;
+    left->numKeys--;
+}
+
+void borrowFromRight(page* parent, int childIndex) {
+    page* child = parent->ptr[childIndex];
+    page* right = parent->ptr[childIndex + 1];
+
+    child->items[child->numKeys] = parent->items[childIndex];
+
+    if (!child->isLeaf) {
+        child->ptr[child->numKeys + 1] = right->ptr[0];
+        if (child->children_offsets && right->children_offsets) {
+            child->children_offsets[child->numKeys + 1] = right->children_offsets[0];
+        }
+        if (child->ptr[child->numKeys + 1]) {
+            child->ptr[child->numKeys + 1]->father = child;
+        }
+    }
+
+    parent->items[childIndex] = right->items[0];
+
+    for (int k = 0; k < right->numKeys - 1; k++) {
+        right->items[k] = right->items[k + 1];
+    }
+    if (!right->isLeaf) {
+        for (int k = 0; k < right->numKeys; k++) {
+            right->ptr[k] = right->ptr[k + 1];
+            if (right->children_offsets) {
+                right->children_offsets[k] = right->children_offsets[k + 1];
+            }
+        }
+        right->ptr[right->numKeys - 1] = NULL;
+    }
+
+    child->numKeys++;
+    right->numKeys--;
+}
+
+void mergeChildren(page* parent, int i) {
+    page* left = parent->ptr[i];
+    page* right = parent->ptr[i + 1];
+
+    left->items[left->numKeys] = parent->items[i];
+
+    for (int k = 0; k < right->numKeys; k++) {
+        left->items[left->numKeys + 1 + k] = right->items[k];
+    }
+
+    if (!left->isLeaf) {
+        for (int k = 0; k <= right->numKeys; k++) {
+            left->ptr[left->numKeys + 1 + k] = right->ptr[k];
+            if (left->children_offsets && right->children_offsets) {
+                left->children_offsets[left->numKeys + 1 + k] = right->children_offsets[k];
+            }
+            if (left->ptr[left->numKeys + 1 + k]) {
+                left->ptr[left->numKeys + 1 + k]->father = left;
+            }
+        }
+    }
+
+    left->numKeys = left->numKeys + 1 + right->numKeys;
+
+    for (int k = i; k < parent->numKeys - 1; k++) {
+        parent->items[k] = parent->items[k + 1];
+        parent->ptr[k + 1] = parent->ptr[k + 2];
+        if (parent->children_offsets) {
+            parent->children_offsets[k + 1] = parent->children_offsets[k + 2];
+        }
+    }
+    parent->ptr[parent->numKeys] = NULL;
+    parent->numKeys--;
+
+    free(right->items);
+    free(right->ptr);
+    if (right->children_offsets) free(right->children_offsets);
+    free(right);
+}
+
+void removeFromLeaf(page* node, int idx) {
+    for (int k = idx; k < node->numKeys - 1; k++) {
+        node->items[k] = node->items[k + 1];
+    }
+    node->numKeys--;
+}
+
+void removeInternal(page** root_ptr, page* node, int key, const char* idx_file);
+
+void removeInternal(page** root_ptr, page* node, int key, const char* idx_file) {
+    if (!node) return;
+    
+    int i = 0;
+    while (i < node->numKeys && key > node->items[i].key) i++;
+
+    if (i < node->numKeys && node->items[i].key == key) {
+        if (node->isLeaf) {
+            removeFromLeaf(node, i);
+            return;
+        } else {
+            // Carrega filhos se necessário
+            if (node->ptr[i] == NULL && node->children_offsets && node->children_offsets[i] != -1) {
+                FILE* fp = openIndexFile(idx_file, "rb+");
+                if (fp) {
+                    node->ptr[i] = loadPage_disk(fp, node->children_offsets[i]);
+                    if (node->ptr[i]) node->ptr[i]->father = node;
+                    fclose(fp);
+                }
+            }
+            if (node->ptr[i+1] == NULL && node->children_offsets && node->children_offsets[i+1] != -1) {
+                FILE* fp = openIndexFile(idx_file, "rb+");
+                if (fp) {
+                    node->ptr[i+1] = loadPage_disk(fp, node->children_offsets[i+1]);
+                    if (node->ptr[i+1]) node->ptr[i+1]->father = node;
+                    fclose(fp);
+                }
+            }
+            
+            page* left = node->ptr[i];
+            page* right = node->ptr[i + 1];
+            
+            if (left && left->numKeys > MIN_KEYS) {
+                int pred = getPredecessor(node, i, idx_file);
+                node->items[i].key = pred;
+                removeInternal(root_ptr, left, pred, idx_file);
+                return;
+            } else if (right && right->numKeys > MIN_KEYS) {
+                int succ = getSuccessor(node, i, idx_file);
+                node->items[i].key = succ;
+                removeInternal(root_ptr, right, succ, idx_file);
+                return;
+            } else {
+                mergeChildren(node, i);
+                removeInternal(root_ptr, node->ptr[i], key, idx_file);
+                return;
+            }
+        }
+    } else {
+        if (node->isLeaf) return;
+        
+        // Carrega filho se necessário
+        if (node->ptr[i] == NULL && node->children_offsets && node->children_offsets[i] != -1) {
+            FILE* fp = openIndexFile(idx_file, "rb+");
+            if (fp) {
+                node->ptr[i] = loadPage_disk(fp, node->children_offsets[i]);
+                if (node->ptr[i]) node->ptr[i]->father = node;
+                fclose(fp);
+            }
+        }
+        
+        page* child = node->ptr[i];
+        if (!child) return;
+
+        if (child->numKeys <= MIN_KEYS) {
+            // Carrega irmãos se necessário
+            page* left = NULL;
+            page* right = NULL;
+            
+            if (i > 0) {
+                if (node->ptr[i-1] == NULL && node->children_offsets && node->children_offsets[i-1] != -1) {
+                    FILE* fp = openIndexFile(idx_file, "rb+");
+                    if (fp) {
+                        node->ptr[i-1] = loadPage_disk(fp, node->children_offsets[i-1]);
+                        if (node->ptr[i-1]) node->ptr[i-1]->father = node;
+                        fclose(fp);
+                    }
+                }
+                left = node->ptr[i - 1];
+            }
+            
+            if (i < node->numKeys) {
+                if (node->ptr[i+1] == NULL && node->children_offsets && node->children_offsets[i+1] != -1) {
+                    FILE* fp = openIndexFile(idx_file, "rb+");
+                    if (fp) {
+                        node->ptr[i+1] = loadPage_disk(fp, node->children_offsets[i+1]);
+                        if (node->ptr[i+1]) node->ptr[i+1]->father = node;
+                        fclose(fp);
+                    }
+                }
+                right = node->ptr[i + 1];
+            }
+
+            if (left && left->numKeys > MIN_KEYS) {
+                borrowFromLeft(node, i);
+            } else if (right && right->numKeys > MIN_KEYS) {
+                borrowFromRight(node, i);
+            } else {
+                if (right) {
+                    mergeChildren(node, i);
+                    child = node->ptr[i];
+                } else if (left) {
+                    mergeChildren(node, i - 1);
+                    child = node->ptr[i - 1];
+                    i = i - 1;
+                }
+            }
+        }
+        removeInternal(root_ptr, child, key, idx_file);
+    }
+}
+
+void removeBtree_disk(page** root_ptr, int key, const char* idx_file) {
+    if (!root_ptr || !(*root_ptr)) return;
+    page* root = *root_ptr;
+    
+    removeInternal(root_ptr, root, key, idx_file);
+
+    if (root->numKeys == 0) {
+        if (!root->isLeaf && root->ptr[0] != NULL) {
+            page* new_root = root->ptr[0];
+            new_root->father = NULL;
+            free(root->items);
+            free(root->ptr);
+            if (root->children_offsets) free(root->children_offsets);
+            free(root);
+            *root_ptr = new_root;
+        } else if (root->isLeaf) {
+            free(root->items);
+            free(root->ptr);
+            if (root->children_offsets) free(root->children_offsets);
+            free(root);
+            *root_ptr = NULL;
+        }
+    }
+    
+    // Salva automaticamente após remoção
+    if (*root_ptr != NULL) {
+        saveBTree(idx_file, *root_ptr);
+    }
+}
+
+
 /* Insert principal */
-void insertBtree(page** root_ptr, Item item) {
+void insertBtree(page** root_ptr, Item item, const char* idx_file) {
     page* root = *root_ptr;
 
     // Se a raiz tá cheia, faz a divisão preventiva
@@ -516,7 +1528,7 @@ void insertBtree(page** root_ptr, Item item) {
         if (item.key > new_root->items[0].key) pos++;
 
         // Desce até achar a folha onde ele vai ser inserido
-        insertIntoNonFull(new_root->ptr[pos], item);
+        insertIntoNonFull(new_root->ptr[pos], item, idx_file);
         
         // Atualiza a referência da árvore
         *root_ptr = new_root;
@@ -524,7 +1536,7 @@ void insertBtree(page** root_ptr, Item item) {
     // Se a raiz NÃO está cheia
     } else {
         // Desce recursivamente pelos filhos até uma folha e insere
-        insertIntoNonFull(root, item);
+        insertIntoNonFull(root, item, idx_file);
     }
 }
 
@@ -604,29 +1616,25 @@ SerializedPage serializePage(page* pg) {
 
 /* Escreve um nó no disco, e retorna o offset daquele nó */
 long savePage_disk(FILE* fp, page* pg) {
-    // posso eventualmente usar o open file aqui dentro ou no main/outra função, whatever
-    
     //Se tá salvando uma nula, retorna -1. Offset não existe
     if (pg == NULL) return -1;
 
-    // Se a página já tem um offset (já tá em disco), sobrescreve o que tá escrito no arquivo
-    if (pg->disk_offset != -1) {
-        fseek(fp, pg->disk_offset, SEEK_SET); // vai até o offset
-    } else {
-        // Senão, vai pro final do arquivo e escreve a página lá
-        // (meio que fodase onde a página tá no arquivo, já que vai ser tudo por offset)
-        
+    //Converte a página pra formato de disco
+    SerializedPage sp = serializePage(pg);
+
+    // Se ainda não tem offset, aloca um novo
+    if (pg->disk_offset == -1) {
         fseek(fp, 0, SEEK_END);         // move pro final
         pg->disk_offset = ftell(fp);    // salva o offset
-        // printf("!!!!!!!!!!!!!! disk offset (savapg disk): %ld\n", pg->disk_offset);
+        
+    } else {
+        //Se já existe, sobreescreve
+        fseek(fp, pg->disk_offset, SEEK_SET); // vai até o offset
     }
 
-    //Converte a página pra formato de disco e salva
-    SerializedPage sp = serializePage(pg);
+    // Pega a página serializada e escreve no disco
     fwrite(&sp, sizeof(SerializedPage), 1, fp);
     fflush(fp); //força a gravação imediata no disco (limpando o buffer)
-
-    
 
     return pg->disk_offset;
 }
@@ -650,6 +1658,7 @@ page* loadPage_disk(FILE* fp, long offset) {
     pg->numKeys = sp.numKeys;
     pg->isLeaf = sp.isLeaf;
     pg->disk_offset = offset;
+    pg->father = NULL;
 
     // alloca os arrays
     pg->items = (Item*)calloc(MAX_KEYS, sizeof(Item));
@@ -660,6 +1669,8 @@ page* loadPage_disk(FILE* fp, long offset) {
         pg->items[i] = sp.items[i];
     }
 
+
+
     // APENAS A PÁGINA ATUAL É CARREGADA PRA MEMÓRIA
     // as outras são carregadas sobre demanda, se necessário
     // Porém, carrega todos os offsets, caso seja necessário carregar as outras
@@ -669,18 +1680,18 @@ page* loadPage_disk(FILE* fp, long offset) {
         pg->children_offsets = (long*)malloc(sizeof(long) * M); //aloca espaço pra M longs
         
         for (int i = 0; i < M; i++) {
-            pg->ptr[i] = NULL;
+            // pg->ptr[i] = NULL;
             pg->children_offsets[i] = sp.child_offsets[i];
         }
     } else {
         //Se não tiver nenhum dado de offset, não aloca nada. Pois é folha
         pg->children_offsets = NULL;
-        for (int i = 0; i < M; i++) {
-            pg->ptr[i] = NULL;
-        }
+        
+        // Isso aqui já vem como NULL por causa do CALLOC
+        // for (int i = 0; i < M; i++) {
+        //     pg->ptr[i] = NULL;
+        // }
     }
-    
-    pg->father = NULL;
 
     return pg;
 }
@@ -689,18 +1700,24 @@ page* loadPage_disk(FILE* fp, long offset) {
 void saveBTree_recursive(FILE* fp, page* node) {
     if (node == NULL) return;
     
-    // Primeiro salva os filhos (pós-ordem)
-    if (!node->isLeaf) {
+    // Salva o nó ANTES dos filhos
+    savePage_disk(fp, node);
+
+    // Atualiza os offsets dos filhos no vetor
+    if (!node->isLeaf && node->children_offsets != NULL) {
         for (int i = 0; i <= node->numKeys; i++) {
             if (node->ptr[i] != NULL) {
+                // Salva o filho recursivamente (ele ganha o offset aqui)
                 saveBTree_recursive(fp, node->ptr[i]);
+
+                //Atualiza o offset no array do pai
+                node->children_offsets[i] = node->ptr[i]->disk_offset;
             }
         }
+
+        // Re salva o pai pra atualizar os offsets dos filhos
+        savePage_disk(fp, node);
     }
-    
-    // Depois salva este nó
-    // printf("!!!!!!!!!!!!!! disk offset (savebtree): %ld\n", node->disk_offset);
-    savePage_disk(fp, node);
 }
 
 /* Salva a BTRee num arquivo e atualiza o header de dados */
@@ -718,7 +1735,6 @@ void saveBTree(const char* idx_file, page* root) {
     //Atualiza os metadados
     BtreeInfo metadata;
     metadata.root_offset = (root != NULL) ? root->disk_offset : -1;
-    // printf("\n==========================\n ROOT OFFSET (saveBTree): %ld \n==========================\n");
     metadata.ordem = M;
     metadata.num_nodes = 0; //contador ainda não foi implementado
     
@@ -744,7 +1760,11 @@ page* loadBTree(const char* idx_file) {
     //Lê e carrega os metadados
     BtreeInfo metadata;
     fseek(fp, 0, SEEK_SET); //coloca o ponteiro no início pra garantir
-    fread(&metadata, sizeof(BtreeInfo), 1, fp);
+    if (fread(&metadata, sizeof(BtreeInfo), 1, fp) != 1) {
+        fclose(fp);
+        printf("Erro ao ler metadados.\n");
+        return NULL;
+    }
 
     //Confere se a árvore tá vazia
     if (metadata.root_offset == -1) {
@@ -758,7 +1778,12 @@ page* loadBTree(const char* idx_file) {
 
     //Fecha arquivo, avisa terminal e retorna ponteiro pra root
     fclose(fp);
-    printf("Raiz da árvore carregada com sucesso!\n");
+
+    if (root) {
+        printf("Raiz carregada (offset=%ld, keys=%d)\n", 
+               root->disk_offset, root->numKeys);
+    }
+
     return root;
 }
 
@@ -779,132 +1804,4 @@ void freeTree(page* n) {
     }
 
     free(n);
-}
-
-// ✅ TESTE COMPLETO PARA FASE 2
-void teste_completo_fase2() {
-    printf("=== TESTE COMPLETO: PERSISTÊNCIA ===\n\n");
-    
-    const char* idx_file = "alunos.idx";
-    
-    // ========== PARTE 1: CRIAR E SALVAR ==========
-    printf("--- PARTE 1: Criando árvore ---\n");
-    
-    page* root = (page*)malloc(sizeof(page));
-    initializePage(root, true);
-    // root->disk_offset = sizeof(BtreeInfo);
-    
-    // Insere vários itens (chave / offset)
-    Item i1 = {12345, 0};
-    Item i2 = {67890, 105};
-    Item i3 = {11111, 210};
-    Item i4 = {54321, 315};
-    Item i5 = {99999, 420};
-    
-    insertBtree(&root, i1);
-    insertBtree(&root, i2);
-    insertBtree(&root, i3);
-    insertBtree(&root, i4);
-    insertBtree(&root, i5);
-    
-    printf("✓ 5 itens inseridos\n");
-    
-    // Testa busca antes de salvar
-    long offset = search(root, 67890);
-    printf("Busca 67890 (antes de salvar): offset = %ld\n", offset);
-    
-    // Salva no disco
-    printf("\n--- Salvando árvore ---\n");
-    saveBTree(idx_file, root);
-    
-    // Libera memória (simula fechar o programa)
-    printf("\n--- Liberando memória (simula fechar programa) ---\n");
-    freeTree(root);
-    root = NULL;
-    printf("✓ Memória liberada\n");
-    
-    // ========== PARTE 2: CARREGAR DO DISCO ==========
-    printf("\n--- PARTE 2: Carregando do disco (simula nova execução) ---\n");
-    
-    page* loaded_root = loadBTree(idx_file);
-    
-    if (loaded_root == NULL) {
-        printf("✗ ERRO: Falha ao carregar!\n");
-        return;
-    }
-    
-    // Testa buscas após carregar
-    printf("\n--- Testando buscas após carregar ---\n");
-    
-    int test_keys[] = {12345, 67890, 11111, 99999, 88888};
-    long expected[] = {0, 105, 210, 420, -1};
-    
-    for (int i = 0; i < 5; i++) {
-        long found = search(loaded_root, test_keys[i]);
-        bool ok = (found == expected[i]);
-        printf("Busca %d: offset = %ld %s\n", 
-               test_keys[i], found, ok ? "✓" : "✗");
-    }
-    
-    // ========== PARTE 3: INSERIR APÓS CARREGAR ==========
-    printf("\n--- PARTE 3: Inserindo após carregar ---\n");
-    
-    Item i6 = {77777, 525};
-    insertBtree(&loaded_root, i6);
-    printf("✓ Item 77777 inserido\n");
-    
-    // Salva novamente
-    saveBTree(idx_file, loaded_root);
-    
-    // Busca o novo item
-    long new_offset = search(loaded_root, 77777);
-    printf("Busca 77777: offset = %ld %s\n", 
-           new_offset, new_offset == 525 ? "✓" : "✗");
-    
-    freeTree(loaded_root);
-    
-    printf("\n✅ FASE 2 COMPLETA! Persistência funcionando.\n");
-}
-
-// ✅ NOVO MAIN PARA TESTES
-int main() {
-    printf("=== SISTEMA DE GERENCIAMENTO ACADÊMICO ===\n\n");
-    
-    // Opção 1: Teste apenas persistência
-    teste_completo_fase2();
-    
-    /* Opção 2: Teste integração (arquivo + índice)
-    printf("\n=== TESTE INTEGRAÇÃO: ARQUIVO + ÍNDICE ===\n\n");
-    
-    page* root = (page*)malloc(sizeof(page));
-    initializePage(root, true);
-    
-    // Insere aluno no arquivo
-    Aluno a1 = {true, 12345, "João Silva"};
-    long data_offset = insertRecord("alunos.dat", &a1, sizeof(Aluno));
-    printf("✓ Aluno inserido em alunos.dat (offset %ld)\n", data_offset);
-    
-    // Insere no índice
-    Item idx_entry = {a1.matricula, data_offset};
-    insertBtree(&root, idx_entry);
-    printf("✓ Índice criado: %d → %ld\n", a1.matricula, data_offset);
-    
-    // Salva índice
-    saveBTree("alunos.idx", root);
-    
-    // Busca completa
-    printf("\n--- Busca completa ---\n");
-    long found_offset = search(root, 12345);
-    if (found_offset != -1) {
-        Aluno resultado;
-        if (searchRecord("alunos.dat", found_offset, &resultado, sizeof(Aluno))) {
-            printf("✓ Aluno encontrado: %s (matrícula %d)\n", 
-                   resultado.nome, resultado.matricula);
-        }
-    }
-    
-    freeTree(root);
-    */
-    
-    return 0;
 }
