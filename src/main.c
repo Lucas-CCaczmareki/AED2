@@ -10,9 +10,31 @@ typedef struct {
     double y;
 } City;
 
+typedef struct {
+    int num_cities;
+    double** distances;
+} GraphMatrix;
+
 double distance(City c1, City c2) {
     return sqrt(pow(c1.x - c2.x, 2) + pow(c1.y - c2.y, 2));
 }
+
+GraphMatrix* create_graph_matrix(int n) {
+    // Aloca a estrutura em si
+    GraphMatrix* graph = (GraphMatrix*)malloc(sizeof(GraphMatrix));
+    graph->num_cities = n;
+
+    // Aloca as linhas de cidades
+    graph->distances = (double**)malloc(sizeof(double*) * n);
+
+    // Aloca as colunas pra cada linha
+    for (int i = 0; i < n; i++) {
+        graph->distances[i] = (double*)malloc(sizeof(double) * n);
+    }
+
+    return graph;
+}
+
 
 int main () {
     City* cities;
@@ -24,6 +46,11 @@ int main () {
 
     // Lê linha por linha do arquivo
     while(fgets(line, sizeof(line), fp) != NULL) {
+        // Testa se EOF pra evitar ler coisa errada.
+        if(strstr(line, "EOF") != NULL) {
+            break;
+        }
+        
         //Lê as coordenadas das cidades
         if(isCoord) {
             if(sscanf(line, "%d %lf %lf", &cities[i].id, &cities[i].x, &cities[i].y) != 3) {
@@ -52,6 +79,24 @@ int main () {
             isCoord = true;
         }
     }
-
+    fclose(fp);
+    // Teste pra ver se deu certo
     printf("Cidade %d: x: %.4f y: %.4f\n", cities[0].id, cities[0].x, cities[0].y);
+
+    // Início da parte que cria a matriz de adjacência
+
+    GraphMatrix* matrixGraph = create_graph_matrix(dimension);
+
+    for (int i = 0; i < dimension; i++) {
+        for (int j = 0; j < dimension; j++) {
+            if (i == j) {
+                matrixGraph->distances[i][j] = 0.0;
+            } else {
+                double dist = distance(cities[i], cities[j]);
+                matrixGraph->distances[i][j] = dist;
+            }
+        }
+    }
+
+
 }
