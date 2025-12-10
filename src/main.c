@@ -396,10 +396,13 @@ int main () {
     City* cities = NULL;      // Usado para a Matriz
     City* cities_list = NULL; // Cópia usada para a Lista
 
+    clock_t start, end;
+    double time_taken;
+
     bool isCoord = false;
     int i = 0;
     char line[500];
-    FILE* fp = fopen("ja_tests.tsp", "r");
+    FILE* fp = fopen("ja9847.tsp", "r");
     int dimension = 0;
 
     if (fp == NULL) {
@@ -449,6 +452,9 @@ int main () {
     // Como os testes na matriz vão mexer no vetor cities, criamos um clone para a lista.
     cities_list = copy_cities_array(cities, dimension);
 
+    // ================ Matriz de adjacência ===================
+    start = clock(); //inicia a contagem
+
     GraphMatrix* matrixGraph = create_graph_matrix(dimension);
     // Preenche a matriz de adjacência
     printf("Criando a matriz de adjacência...\t");
@@ -466,8 +472,16 @@ int main () {
             matrixGraph->distances[j][i] = dist;
         }
     }
-    printf("Criada com sucesso!\n\n");
+    
+    end = clock();
+    printf("Criada com sucesso! Tempo: %.5f seg\n\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 
+    
+    // =========================================================
+
+    // ================ Lista de adjacência ===================
+    start = clock();
+    
     GraphList* listGraph = create_graph_list(dimension);
     //Preenche a lista de adjacência
     printf("Criando a lista de adjacência...\t");
@@ -479,7 +493,9 @@ int main () {
             add_connection_list(listGraph, i, j, dist);
         }
     }
-    printf("Criada com sucesso!\n\n");
+    
+    end = clock();
+    printf("Criada com sucesso! Tempo: %.5f seg\n\n", ((double)(end - start)) / CLOCKS_PER_SEC);
     
     // =================================================================
     //                       ÁREA DE TESTES
@@ -490,46 +506,75 @@ int main () {
     int id_origem = 0;
     int id_destino = 1;
     
+    printf("\n=== TESTES: MATRIZ ===\n");
     // 1. Busca
+    start = clock();
     printf("1. Busca (%d -> %d): %.2f\n", id_origem, id_destino, search_matrix(matrixGraph, id_origem, id_destino));
+    end = clock();
+    printf("[Busca] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 
     // 2. Edição
     printf("2. Editando aresta (%d -> %d) para 5000.0...\n", id_origem, id_destino);
+    start = clock();
     edit_matrix(matrixGraph, id_origem, id_destino, 5000.0);
+    end = clock();
+    printf("[Edição] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
+    start = clock();
     printf("   Nova busca: %.2f\n", search_matrix(matrixGraph, id_origem, id_destino));
+    end = clock();
+    printf("[Busca] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 
     // 3. Inserção
     printf("3. Inserindo nova cidade...\n");
+    start = clock();
     insert_matrix(matrixGraph, &cities, novaCidade); // Passa endereço de cities
+    end = clock();
+    printf("[Inserção] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
     printf("   Nova dimensao Matriz: %d\n", matrixGraph->num_cities);
     printf("   Busca (Nova -> 0): %.2f\n", search_matrix(matrixGraph, matrixGraph->num_cities - 1, 0));
 
     // 4. Remoção
     printf("4. Removendo cidade 0...\n");
+    start = clock();
     remove_matrix(matrixGraph, 0, &cities);
+    end = clock();
     printf("   Nova dimensao Matriz: %d\n", matrixGraph->num_cities);
+    printf("[Remoção] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 
     // --- TESTES LISTA ---
     printf("\n=== TESTES: LISTA ===\n");
 
     // 1. Busca
+    start = clock();
     printf("1. Busca (%d -> %d): %.2f\n", id_origem, id_destino, search_list(listGraph, id_origem, id_destino));
+    end = clock();
+    printf("[Busca] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
 
     // 2. Edição
     printf("2. Editando aresta (%d -> %d) para 5000.0...\n", id_origem, id_destino);
+    start = clock();
     edit_list(listGraph, id_origem, id_destino, 5000.0);
+    end = clock();
+    printf("[Edição] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
     printf("   Nova busca: %.2f\n", search_list(listGraph, id_origem, id_destino));
+    
 
     // 3. Inserção
     printf("3. Inserindo nova cidade...\n");
+    start = clock();
     insert_list(listGraph, &cities_list, novaCidade); // Passa endereço de cities_list
+    end = clock();
+    printf("[Inserção] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
     printf("   Nova dimensao Lista: %d\n", listGraph->num_cities);
     // Busca na lista (origem é o ultimo indice, destino é 0)
     printf("   Busca (Nova -> 0): %.2f\n", search_list(listGraph, listGraph->num_cities - 1, 0));
 
     // 4. Remoção
     printf("4. Removendo cidade 0...\n");
+    start = clock();
     remove_list(listGraph, 0, &cities_list);
+    end = clock();
+    printf("[Remoção] Tempo: %.5f seg\n", ((double)(end - start)) / CLOCKS_PER_SEC);
     printf("   Nova dimensao Lista: %d\n", listGraph->num_cities);
 
     // =================================================================
